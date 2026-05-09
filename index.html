@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="en-GB">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Holiday Calendar Planner</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="backdrop"></div>
+    <main class="app">
+      <header class="hero">
+        <p class="kicker">Holiday Planner</p>
+        <h1>Plan Leave Around Bank Holidays</h1>
+        <p class="subtitle">Track allowance, add trips, and spot long weekends at a glance.</p>
+      </header>
+
+      <section class="panel" aria-labelledby="allowance-heading">
+        <div class="panel-head">
+          <h2 id="allowance-heading">Allowance Setup</h2>
+        </div>
+        <form id="person-form" class="grid-form" autocomplete="off">
+          <label>
+            Person
+            <input type="text" name="name" placeholder="e.g. Ben" required />
+          </label>
+          <label>
+            Standard days
+            <input type="number" name="standard" min="0" step="0.5" value="28" required />
+          </label>
+          <label>
+            Additional days
+            <input type="number" name="additional" min="0" step="0.5" value="0" required />
+          </label>
+          <button type="submit">Add / Update Person</button>
+        </form>
+        <div id="people-summary"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="holiday-heading">
+        <div class="panel-head">
+          <h2 id="holiday-heading">Add Holiday</h2>
+        </div>
+        <form id="holiday-form" class="grid-form" autocomplete="off">
+          <label>
+            Trip / Location
+            <input type="text" name="location" placeholder="e.g. Athens" required />
+          </label>
+          <label>
+            Start date
+            <input type="date" name="startDate" required />
+          </label>
+          <label>
+            End date (optional)
+            <input type="date" name="endDate" />
+          </label>
+          <label>
+            Or number of days
+            <input type="number" name="days" min="0.5" step="0.5" placeholder="e.g. 5" />
+          </label>
+          <label class="full-width">
+            Who is taking this leave?
+            <div id="people-checkboxes" class="checkbox-wrap"></div>
+          </label>
+          <button type="submit">Add Holiday</button>
+        </form>
+      </section>
+
+      <section class="panel" aria-labelledby="views-heading">
+        <div class="panel-head">
+          <h2 id="views-heading">Planner View</h2>
+          <div class="toggle" role="tablist" aria-label="View toggle">
+            <button id="table-tab" class="active" data-view="table" role="tab" aria-selected="true">Table</button>
+            <button id="calendar-tab" data-view="calendar" role="tab" aria-selected="false">Calendar</button>
+          </div>
+        </div>
+
+        <div id="table-view">
+          <div id="holiday-table"></div>
+        </div>
+
+        <div id="calendar-view" class="hidden">
+          <div class="calendar-controls">
+            <button id="prev-year" type="button">Previous Year</button>
+            <h3 id="calendar-year"></h3>
+            <button id="next-year" type="button">Next Year</button>
+          </div>
+          <div id="calendar-grid" class="calendar-grid"></div>
+        </div>
+      </section>
+    </main>
+
+    <template id="month-template">
+      <article class="month-card">
+        <h4></h4>
+        <div class="days-header">
+          <span>Mon</span><span>Tue</span><span>Wed</span><span>Thu</span><span>Fri</span><span>Sat</span><span>Sun</span>
+        </div>
+        <div class="days-grid"></div>
+      </article>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm//supabase-js"></script>
+    <script src="app.js"></script>
+  </body>
+</html>
