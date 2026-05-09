@@ -1,9 +1,9 @@
-const SUPABASE_URL = window.localStorage.getItem("supabase_url") || "";
-const SUPABASE_ANON_KEY = window.localStorage.getItem("supabase_anon_key") || "";
+const SUPABASE_URL = "https://tihctdvsekfanduisaop.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_eOQgde9zeKpa5ld1BH08JQ_irX2xVnb";
 
-let supabase = null;
+let db = null;
 if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
-  supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 }
 
 const state = {
@@ -17,6 +17,10 @@ const el = {
   personForm: document.getElementById("person-form"),
   holidayForm: document.getElementById("holiday-form"),
   peopleSummary: document.getElementById("people-summary"),
+  allowanceTab: document.getElementById("allowance-tab"),
+  holidaysTab: document.getElementById("holidays-tab"),
+  allowanceSection: document.getElementById("allowance-section"),
+  holidaysSection: document.getElementById("holidays-section"),
   peopleCheckboxes: document.getElementById("people-checkboxes"),
   holidayTable: document.getElementById("holiday-table"),
   tableTab: document.getElementById("table-tab"),
@@ -25,7 +29,7 @@ const el = {
   calendarView: document.getElementById("calendar-view"),
   prevYear: document.getElementById("prev-year"),
   nextYear: document.getElementById("next-year"),
-  calendarYear: document.getElementById("calendar-year"),
+  plannerYear: document.getElementById("planner-year"),
   calendarGrid: document.getElementById("calendar-grid"),
   monthTemplate: document.getElementById("month-template"),
 };
@@ -42,6 +46,16 @@ function setStatusMessage(message, isError = false) {
   node.style.color = isError ? "#a33a2b" : "#2d8f5d";
   node.textContent = message;
 }
+
+window.addEventListener("error", (evt) => {
+  const msg = evt?.message || "Unknown runtime error";
+  setStatusMessage(`App error: ${msg}`, true);
+});
+
+window.addEventListener("unhandledrejection", (evt) => {
+  const msg = evt?.reason?.message || String(evt?.reason || "Unknown promise rejection");
+  setStatusMessage(`App error: ${msg}`, true);
+});
 
 function parseDate(dateText) {
   const [y, m, d] = dateText.split("-").map(Number);
@@ -157,52 +171,31 @@ function getBankHolidaysEnglandWales(year) {
 }
 
 function holidayDaysForPerson(name) {
-  return state.holidays.reduce((sum, h) => sum + (h.peopleDays[name] || 0), 0);
+  return holidaysForYear(state.year).reduce((sum, h) => sum + (h.peopleDays[name] || 0), 0);
 }
 
-function ensureSupabaseConfigUI() {
-  if (supabase) return;
+function holidayYear(holiday) {
+  return parseDate(holiday.startDate).getFullYear();
+}
 
-  const panel = document.createElement("section");
-  panel.className = "panel";
-  panel.innerHTML = `
-    <div class="panel-head"><h2>Supabase Connection</h2></div>
-    <p style="margin: 6px 0 10px; color: #5e5248;">Paste your project URL and anon key once. Stored in this browser.</p>
-    <form id="supabase-form" class="grid-form" autocomplete="off">
-      <label>Supabase URL<input type="text" name="url" placeholder="https://your-project.supabase.co" required /></label>
-      <label>Anon key<input type="text" name="anon" placeholder="ey..." required /></label>
-      <button type="submit">Connect</button>
-    </form>
-  `;
-  document.querySelector("main.app").prepend(panel);
-
-  panel.querySelector("#supabase-form").addEventListener("submit", (e) => {
-    e.preventDefault();
-    const form = new FormData(e.currentTarget);
-    const url = String(form.get("url") || "").trim();
-    const anon = String(form.get("anon") || "").trim();
-    if (!url || !anon) return;
-
-    window.localStorage.setItem("supabase_url", url);
-    window.localStorage.setItem("supabase_anon_key", anon);
-    window.location.reload();
-  });
+function holidaysForYear(year) {
+  return state.holidays.filter((h) => holidayYear(h) === year);
 }
 
 async function loadData() {
-  if (!supabase) {
-    ensureSupabaseConfigUI();
-    setStatusMessage("Add Supabase credentials to start syncing data.", true);
+  if (!db) {
+    setStatusMessage("Supabase is not configured. Set SUPABASE_URL and SUPABASE_ANON_KEY in app.js.", true);
     return;
   }
 
   const [peopleRes, holidaysRes] = await Promise.all([
-    supabase.from("people_allowance").select("*").order("name", { ascending: true }),
-    supabase.from("holidays").select("*").order("start_date", { ascending: true }),
+    db.from("people_allowance").select("*").order("name", { ascending: true }),
+    db.from("holidays").select("*").order("start_date", { ascending: true }),
   ]);
 
   if (peopleRes.error || holidaysRes.error) {
-    setStatusMessage("Could not load data from Supabase. Check table setup/RLS.", true);
+    const reason = peopleRes.error?.message || holidaysRes.error?.message || "Unknown error";
+    setStatusMessage(`Could not load data from Supabase: ${reason}`, true);
     return;
   }
 
@@ -232,26 +225,39 @@ function renderPeopleSummary() {
     return;
   }
 
-  const cards = state.people
+  const rows = state.people
     .map((p) => {
       const planned = holidayDaysForPerson(p.name);
       const total = p.standard + p.additional;
       const remaining = total - planned;
       return `
-      <article class="person-card">
-        <h3>${p.name}</h3>
-        <div class="metrics">
-          <span>Planned</span><strong>${planned}</strong>
-          <span>Standard allowance</span><span>${p.standard}</span>
-          <span>Additional days</span><span>${p.additional}</span>
-          <span>Total allowance</span><strong>${total}</strong>
-          <span>Remaining</span><strong>${remaining}</strong>
-        </div>
-      </article>`;
+      <tr>
+        <td>${p.name}</td>
+        <td>${p.standard}</td>
+        <td>${p.additional}</td>
+        <td>${total}</td>
+        <td>${planned}</td>
+        <td>${remaining}</td>
+      </tr>`;
     })
     .join("");
 
-  el.peopleSummary.innerHTML = `<div class="summary-grid">${cards}</div>`;
+  el.peopleSummary.innerHTML = `
+    <p>Allowance for <strong>${state.year}</strong></p>
+    <table>
+      <thead>
+        <tr>
+          <th>Person</th>
+          <th>Standard</th>
+          <th>Additional</th>
+          <th>Total Allowance</th>
+          <th>Planned (${state.year})</th>
+          <th>Remaining (${state.year})</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
 
   el.peopleCheckboxes.innerHTML = state.people
     .map(
@@ -261,12 +267,13 @@ function renderPeopleSummary() {
 }
 
 function renderHolidayTable() {
-  if (!state.holidays.length) {
-    el.holidayTable.innerHTML = "<p>No holidays added yet.</p>";
+  const rowsForYear = holidaysForYear(state.year);
+  if (!rowsForYear.length) {
+    el.holidayTable.innerHTML = `<p>No holidays added for <strong>${state.year}</strong> yet.</p>`;
     return;
   }
 
-  const rows = state.holidays
+  const rows = rowsForYear
     .map((h) => {
       const people = Object.entries(h.peopleDays)
         .filter(([, v]) => Number(v) > 0)
@@ -285,6 +292,7 @@ function renderHolidayTable() {
     .join("");
 
   el.holidayTable.innerHTML = `
+    <p>Showing holidays for <strong>${state.year}</strong></p>
     <table>
       <thead>
         <tr>
@@ -320,7 +328,8 @@ function buildHolidayDayIndex(year) {
 
 function renderCalendar() {
   const year = state.year;
-  el.calendarYear.textContent = String(year);
+  if (el.plannerYear) el.plannerYear.textContent = String(year);
+  if (!el.calendarGrid) return;
   el.calendarGrid.innerHTML = "";
 
   const bankHolidays = getBankHolidaysEnglandWales(year);
@@ -378,6 +387,7 @@ function render() {
 }
 
 function toggleView(view) {
+  if (!el.tableView || !el.calendarView || !el.tableTab || !el.calendarTab) return;
   state.view = view;
   const table = view === "table";
   el.tableView.classList.toggle("hidden", !table);
@@ -388,25 +398,45 @@ function toggleView(view) {
   el.calendarTab.setAttribute("aria-selected", table ? "false" : "true");
 }
 
-async function upsertPerson(name, standard, additional) {
-  const payload = {
-    name,
-    standard_days: standard,
-    additional_days: additional,
-  };
+function toggleAppSection(section) {
+  if (!el.allowanceSection || !el.holidaysSection || !el.allowanceTab || !el.holidaysTab) return;
+  const isAllowance = section === "allowance";
+  el.allowanceSection.classList.toggle("hidden", !isAllowance);
+  el.holidaysSection.classList.toggle("hidden", isAllowance);
+  el.allowanceTab.classList.toggle("active", isAllowance);
+  el.holidaysTab.classList.toggle("active", !isAllowance);
+  el.allowanceTab.setAttribute("aria-selected", isAllowance ? "true" : "false");
+  el.holidaysTab.setAttribute("aria-selected", isAllowance ? "false" : "true");
+}
 
-  const { error } = await supabase.from("people_allowance").upsert(payload, { onConflict: "name" });
+async function upsertPerson(name, standard, additional) {
+  const payload = { standard_days: standard, additional_days: additional };
+  const existingRes = await db
+    .from("people_allowance")
+    .select("id,name")
+    .eq("name", name)
+    .maybeSingle();
+
+  if (existingRes.error) throw existingRes.error;
+
+  if (existingRes.data?.id) {
+    const { error } = await db.from("people_allowance").update(payload).eq("id", existingRes.data.id);
+    if (error) throw error;
+    return;
+  }
+
+  const { error } = await db.from("people_allowance").insert({ name, ...payload });
   if (error) throw error;
 }
 
 async function addHoliday(payload) {
-  const { error } = await supabase.from("holidays").insert(payload);
+  const { error } = await db.from("holidays").insert(payload);
   if (error) throw error;
 }
 
-el.personForm.addEventListener("submit", async (e) => {
+if (el.personForm) el.personForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!supabase) return;
+  if (!db) return;
 
   const data = new FormData(e.currentTarget);
   const name = String(data.get("name") || "").trim();
@@ -420,14 +450,16 @@ el.personForm.addEventListener("submit", async (e) => {
     render();
     e.currentTarget.reset();
     setStatusMessage(`Saved allowance for ${name}.`);
-  } catch {
-    setStatusMessage("Could not save person in Supabase.", true);
+  } catch (err) {
+    const reason = err?.message || "Unknown error";
+    setStatusMessage(`Could not save person in Supabase: ${reason}`, true);
+    console.error("Save person error:", err);
   }
 });
 
-el.holidayForm.addEventListener("submit", async (e) => {
+if (el.holidayForm) el.holidayForm.addEventListener("submit", async (e) => {
   e.preventDefault();
-  if (!supabase) return;
+  if (!db) return;
 
   const data = new FormData(e.currentTarget);
   const location = String(data.get("location") || "").trim();
@@ -475,15 +507,19 @@ el.holidayForm.addEventListener("submit", async (e) => {
     render();
     e.currentTarget.reset();
     setStatusMessage(`Saved holiday: ${location}.`);
-  } catch {
-    setStatusMessage("Could not save holiday in Supabase.", true);
+  } catch (err) {
+    const reason = err?.message || "Unknown error";
+    setStatusMessage(`Could not save holiday in Supabase: ${reason}`, true);
+    console.error("Save holiday error:", err);
   }
 });
 
-el.tableTab.addEventListener("click", () => toggleView("table"));
-el.calendarTab.addEventListener("click", () => toggleView("calendar"));
-el.prevYear.addEventListener("click", () => { state.year -= 1; renderCalendar(); });
-el.nextYear.addEventListener("click", () => { state.year += 1; renderCalendar(); });
+if (el.tableTab) el.tableTab.addEventListener("click", () => toggleView("table"));
+if (el.calendarTab) el.calendarTab.addEventListener("click", () => toggleView("calendar"));
+if (el.allowanceTab) el.allowanceTab.addEventListener("click", () => toggleAppSection("allowance"));
+if (el.holidaysTab) el.holidaysTab.addEventListener("click", () => toggleAppSection("holidays"));
+if (el.prevYear) el.prevYear.addEventListener("click", () => { state.year -= 1; render(); });
+if (el.nextYear) el.nextYear.addEventListener("click", () => { state.year += 1; render(); });
 
 (async function init() {
   await loadData();
