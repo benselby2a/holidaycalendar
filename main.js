@@ -8,7 +8,9 @@ if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
 
 const state = {
   people: [],
+  peopleNames: [],
   holidays: [],
+  bankHolidays: [],
   year: new Date().getFullYear(),
   view: "table",
 };
@@ -37,9 +39,16 @@ const RECOGNIZED_COUNTRIES = [
 ];
 
 const el = {
+  peopleForm: document.getElementById("people-form"),
+  peopleList: document.getElementById("people-list"),
+  peopleModal: document.getElementById("people-modal"),
+  peopleCancel: document.getElementById("people-cancel"),
+  openPeople: document.getElementById("open-people"),
   personForm: document.getElementById("person-form"),
   holidayForm: document.getElementById("holiday-form"),
   peopleSummary: document.getElementById("people-summary"),
+  allowanceYearLabel: document.getElementById("allowance-year-label"),
+  allowancePerson: document.getElementById("allowance-person"),
   allowanceSummary: document.getElementById("allowance-summary"),
   addCountry: document.getElementById("add-country"),
   editCountry: document.getElementById("edit-country"),
@@ -49,8 +58,10 @@ const el = {
   allowanceCancel: document.getElementById("allowance-cancel"),
   editModal: document.getElementById("edit-modal"),
   editHolidayForm: document.getElementById("edit-holiday-form"),
+  removeHoliday: document.getElementById("remove-holiday"),
   editCancel: document.getElementById("edit-cancel"),
   peopleCheckboxes: document.getElementById("people-checkboxes"),
+  editPeopleCheckboxes: document.getElementById("edit-people-checkboxes"),
   holidayTable: document.getElementById("holiday-table"),
   tableTab: document.getElementById("table-tab"),
   calendarTab: document.getElementById("calendar-tab"),
@@ -58,6 +69,11 @@ const el = {
   calendarView: document.getElementById("calendar-view"),
   prevYear: document.getElementById("prev-year"),
   nextYear: document.getElementById("next-year"),
+  openBankHolidays: document.getElementById("open-bank-holidays"),
+  bankHolidaysModal: document.getElementById("bank-holidays-modal"),
+  bankHolidaysCancel: document.getElementById("bank-holidays-cancel"),
+  bankHolidayForm: document.getElementById("bank-holiday-form"),
+  bankHolidayList: document.getElementById("bank-holiday-list"),
   plannerYear: document.getElementById("planner-year"),
   calendarGrid: document.getElementById("calendar-grid"),
   monthTemplate: document.getElementById("month-template"),
@@ -227,9 +243,53 @@ function holidaysForYear(year) {
 }
 
 function tripLengthDays(holiday) {
-  const s = parseDate(holiday.startDate);
-  const e = parseDate(holiday.endDate);
-  return Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+  return calcTripLength(holiday.startDate, holiday.endDate, holiday.startHalf || "am", holiday.endHalf || "pm");
+}
+
+function getBankHolidaySet(year) {
+  const custom = state.bankHolidays
+    .filter((h) => Number(h.holidayYear) === year)
+    .map((h) => h.holidayDate);
+  if (custom.length) return new Set(custom);
+  return new Set(getBankHolidaysEnglandWales(year).map((x) => x.iso));
+}
+
+function businessDaysOffWork(startDateText, endDateText, startHalf = "am", endHalf = "pm") {
+  if (!startDateText || !endDateText) return 0;
+  const start = parseDate(startDateText);
+  const end = parseDate(endDateText);
+  if (end < start) return 0;
+
+  const bankByYear = new Map();
+  const isBankHoliday = (date) => {
+    const year = date.getFullYear();
+    if (!bankByYear.has(year)) bankByYear.set(year, getBankHolidaySet(year));
+    return bankByYear.get(year).has(formatDate(date));
+  };
+
+  let count = 0;
+  for (const d of dateRange(start, end)) {
+    const weekend = isWeekend(d);
+    const bank = isBankHoliday(d);
+    if (!weekend && !bank) count += 1;
+  }
+  if (count === 0) return 0;
+  const startIsWorkday = !isWeekend(start) && !isBankHoliday(start);
+  const endIsWorkday = !isWeekend(end) && !isBankHoliday(end);
+  if (startIsWorkday && startHalf === "pm") count -= 0.5;
+  if (endIsWorkday && endHalf === "am") count -= 0.5;
+  return Math.max(0, count);
+}
+
+function calcTripLength(startDateText, endDateText, startHalf = "am", endHalf = "pm") {
+  if (!startDateText || !endDateText) return 0;
+  const s = parseDate(startDateText);
+  const e = parseDate(endDateText);
+  if (e < s) return 0;
+  let total = Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+  if (startHalf === "pm") total -= 0.5;
+  if (endHalf === "am") total -= 0.5;
+  return Math.max(0, total);
 }
 
 function displayStatus(holiday) {
@@ -243,25 +303,34 @@ async function loadData() {
     return;
   }
 
-  let peopleRes = await db.from("people_allowance").select("*").eq("allowance_year", state.year).order("name", { ascending: true });
-  if (peopleRes.error && (String(peopleRes.error.code) === "PGRST204" || String(peopleRes.error.code) === "42703")) {
-    peopleRes = await db.from("people_allowance").select("*").order("name", { ascending: true });
+  let peopleDirectoryRes = await db.from("people").select("*").order("name", { ascending: true });
+  if (peopleDirectoryRes.error && (String(peopleDirectoryRes.error.code) === "42P01" || String(peopleDirectoryRes.error.code) === "PGRST204")) {
+    peopleDirectoryRes = { data: [], error: null };
   }
+  let peopleRes = await db.from("people_allowance").select("*").order("name", { ascending: true });
   const holidaysRes = await db.from("holidays").select("*").order("start_date", { ascending: true });
+  let bankHolidaysRes = await db.from("bank_holidays").select("*").order("holiday_date", { ascending: true });
+  if (bankHolidaysRes.error && (String(bankHolidaysRes.error.code) === "PGRST204" || String(bankHolidaysRes.error.code) === "42P01" || String(bankHolidaysRes.error.code) === "42703")) {
+    bankHolidaysRes = { data: [], error: null };
+  }
 
-  if (peopleRes.error || holidaysRes.error) {
-    const reason = peopleRes.error?.message || holidaysRes.error?.message || "Unknown error";
+  if (peopleRes.error || holidaysRes.error || bankHolidaysRes.error || peopleDirectoryRes.error) {
+    const reason = peopleRes.error?.message || holidaysRes.error?.message || bankHolidaysRes.error?.message || peopleDirectoryRes.error?.message || "Unknown error";
     setStatusMessage(`Could not load data from Supabase: ${reason}`, true);
     return;
   }
 
-  state.people = (peopleRes.data || []).map((p) => ({
+  const allPeopleRows = (peopleRes.data || []).map((p) => ({
     id: p.id,
     name: p.name,
     standard: Number(p.standard_days),
     additional: Number(p.additional_days),
     allowanceYear: Number(p.allowance_year || state.year),
   }));
+  const directoryNames = (peopleDirectoryRes.data || []).map((p) => p.name);
+  const fallbackNames = allPeopleRows.map((p) => p.name);
+  state.peopleNames = Array.from(new Set([...directoryNames, ...fallbackNames])).sort((a, b) => a.localeCompare(b));
+  state.people = allPeopleRows.filter((p) => p.allowanceYear === state.year || Number.isNaN(p.allowanceYear));
 
   state.holidays = (holidaysRes.data || []).map((h) => ({
     id: h.id,
@@ -269,31 +338,80 @@ async function loadData() {
     country: h.country || "",
     startDate: h.start_date,
     endDate: h.end_date,
+    startHalf: h.start_half || "am",
+    endHalf: h.end_half || "pm",
     daysOffWork: Number(h.days_off_work ?? h.days),
     status: h.status || "ideation",
     peopleDays: h.people_days || {},
   }));
+  state.bankHolidays = (bankHolidaysRes.data || []).map((h) => ({
+    id: h.id,
+    holidayYear: Number(h.holiday_year),
+    holidayDate: h.holiday_date,
+    name: h.name,
+  }));
+  if (!state.bankHolidays.some((h) => h.holidayYear === state.year)) {
+    const defaults = getBankHolidaysEnglandWales(state.year).map((h) => ({
+      holiday_year: state.year,
+      holiday_date: h.iso,
+      name: h.name,
+    }));
+    const saveDefaults = await db.from("bank_holidays").upsert(defaults, { onConflict: "holiday_year,holiday_date" });
+    if (!saveDefaults.error) {
+      const refreshed = await db.from("bank_holidays").select("*").eq("holiday_year", state.year).order("holiday_date", { ascending: true });
+      if (!refreshed.error) {
+        state.bankHolidays = state.bankHolidays
+          .filter((h) => h.holidayYear !== state.year)
+          .concat((refreshed.data || []).map((h) => ({
+            id: h.id,
+            holidayYear: Number(h.holiday_year),
+            holidayDate: h.holiday_date,
+            name: h.name,
+          })));
+      }
+    }
+  }
 
 }
 
+function renderPeopleList() {
+  if (!el.peopleList) return;
+  if (!state.peopleNames.length) {
+    el.peopleList.innerHTML = "<p>No people added yet.</p>";
+    return;
+  }
+  el.peopleList.innerHTML = `
+    <table>
+      <thead><tr><th>Person</th><th>Action</th></tr></thead>
+      <tbody>
+        ${state.peopleNames.map((name) => `<tr><td>${name}</td><td><button type="button" class="remove-person" data-name="${name}">Remove</button></td></tr>`).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
 function renderPeopleSummary() {
-  if (!state.people.length) {
+  if (!state.peopleNames.length) {
     el.peopleSummary.innerHTML = "<p>No people added yet.</p>";
     el.peopleCheckboxes.innerHTML = "<p>Add people first.</p>";
     if (el.allowanceSummary) el.allowanceSummary.innerHTML = "";
     return;
   }
 
-  const rows = state.people
-    .map((p) => {
-      const planned = holidayDaysForPerson(p.name);
-      const total = p.standard + p.additional;
+  const allowanceByName = new Map(state.people.map((p) => [p.name, p]));
+  const rows = state.peopleNames
+    .map((name) => {
+      const allowance = allowanceByName.get(name);
+      const standard = allowance ? allowance.standard : 0;
+      const additional = allowance ? allowance.additional : 0;
+      const planned = holidayDaysForPerson(name);
+      const total = standard + additional;
       const remaining = total - planned;
       return `
       <tr>
-        <td>${p.name}</td>
-        <td>${p.standard}</td>
-        <td>${p.additional}</td>
+        <td>${name}</td>
+        <td>${standard}</td>
+        <td>${additional}</td>
         <td>${total}</td>
         <td>${planned}</td>
         <td>${remaining}</td>
@@ -318,47 +436,90 @@ function renderPeopleSummary() {
     </table>
   `;
 
-  el.peopleCheckboxes.innerHTML = state.people
-    .map(
-      (p) => `<label><input type="checkbox" name="person" value="${p.name}" checked /> ${p.name}</label>`
-    )
-    .join("");
+  renderPeopleCheckboxes();
 
-  const summaryChips = state.people
-    .map((p) => {
-      const planned = holidayDaysForPerson(p.name);
-      const total = p.standard + p.additional;
+  const summaryChips = state.peopleNames
+    .map((name) => {
+      const allowance = allowanceByName.get(name);
+      const standard = allowance ? allowance.standard : 0;
+      const additional = allowance ? allowance.additional : 0;
+      const planned = holidayDaysForPerson(name);
+      const total = standard + additional;
       const remaining = total - planned;
-      return `<span class="allowance-chip"><strong>${p.name}</strong>: ${remaining} remaining (${state.year})</span>`;
+      return `<span class="allowance-chip"><strong>${name}</strong>: ${remaining} remaining</span>`;
     })
     .join("");
   if (el.allowanceSummary) el.allowanceSummary.innerHTML = `<div class="allowance-summary">${summaryChips}</div>`;
-  renderHolidayHeatmap();
+  if (el.allowanceYearLabel) el.allowanceYearLabel.textContent = String(state.year);
+  if (el.allowancePerson) {
+    const prevSelected = el.allowancePerson.value;
+    el.allowancePerson.innerHTML = state.peopleNames.map((name) => `<option value="${name}">${name}</option>`).join("");
+    if (prevSelected && state.peopleNames.includes(prevSelected)) {
+      el.allowancePerson.value = prevSelected;
+    }
+  }
+  syncAllowanceEditorFromSelection();
+}
+
+function renderPeopleCheckboxes(selectedNames = null) {
+  const selectedSet = new Set(selectedNames || state.peopleNames);
+  const addMarkup = state.peopleNames
+    .map((name) => `<label><input type="checkbox" name="person" value="${name}" ${selectedSet.has(name) ? "checked" : ""} /> ${name}</label>`)
+    .join("");
+  const editMarkup = state.peopleNames
+    .map((name) => `<label><input type="checkbox" name="editPerson" value="${name}" ${selectedSet.has(name) ? "checked" : ""} /> ${name}</label>`)
+    .join("");
+  if (el.peopleCheckboxes) el.peopleCheckboxes.innerHTML = addMarkup;
+  if (el.editPeopleCheckboxes) el.editPeopleCheckboxes.innerHTML = editMarkup;
+}
+
+function syncAllowanceEditorFromSelection() {
+  if (!el.personForm || !el.allowancePerson) return;
+  const selectedName = String(el.allowancePerson.value || "");
+  if (!selectedName) return;
+  const existing = state.people.find((p) => p.name === selectedName);
+  const standard = existing ? existing.standard : 28;
+  const additional = existing ? existing.additional : 0;
+  if (el.personForm.elements.standard) el.personForm.elements.standard.value = String(standard);
+  if (el.personForm.elements.additional) el.personForm.elements.additional.value = String(additional);
 }
 
 function renderHolidayHeatmap() {
   if (!el.holidayHeatmap) return;
   const year = state.year;
-  const monthTotals = Array(12).fill(0);
+  const monthTripTotals = Array(12).fill(0);
+  const monthDaysOffTotals = Array(12).fill(0);
   for (const h of holidaysForYear(year)) {
     const s = parseDate(h.startDate);
     const e = parseDate(h.endDate);
+    const daysOffWork = Number(h.daysOffWork || 0);
+    const length = Math.max(0, tripLengthDays(h));
+    const monthIdx = s.getMonth();
+    monthTripTotals[monthIdx] += length;
+    monthDaysOffTotals[monthIdx] += daysOffWork;
+
     for (const d of dateRange(s, e)) {
       if (d.getFullYear() !== year) continue;
-      monthTotals[d.getMonth()] += 1;
+      // no-op loop kept for stable behavior if ranges cross years in future logic
     }
   }
 
-  const maxVal = Math.max(...monthTotals, 1);
+  const maxVal = Math.max(...monthTripTotals, ...monthDaysOffTotals, 1);
   const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const bars = monthTotals
-    .map((val, idx) => {
-      const h = Math.round((val / maxVal) * 120);
+  const bars = monthShort
+    .map((label, idx) => {
+      const tripVal = monthTripTotals[idx];
+      const offVal = monthDaysOffTotals[idx];
+      const tripH = Math.round((tripVal / maxVal) * 120);
+      const offH = Math.round((offVal / maxVal) * 120);
       return `
-      <div class="month-bar-wrap" title="${monthShort[idx]}: ${val} holiday day(s)">
-        <div class="month-bar" style="height:${h}px"></div>
-        <span class="month-val">${val}</span>
-        <span class="month-label">${monthShort[idx]}</span>
+      <div class="month-bar-wrap" title="${label}: ${tripVal} total days, ${offVal} days off work">
+        <div class="month-bars-overlap">
+          <div class="month-bar month-bar-total" style="height:${tripH}px"></div>
+          <div class="month-bar month-bar-off" style="height:${offH}px"></div>
+        </div>
+        <span class="month-val">${tripVal}/${offVal}</span>
+        <span class="month-label">${label}</span>
       </div>`;
     })
     .join("");
@@ -368,7 +529,8 @@ function renderHolidayHeatmap() {
       <p><strong>Holiday Intensity By Month (${year})</strong></p>
       <div class="month-intensity-chart">${bars}</div>
       <div class="heatmap-legend">
-        <span>Taller bar = more holiday days planned in that month</span>
+        <span><span class="legend-swatch legend-total"></span>Total holiday days</span>
+        <span><span class="legend-swatch legend-off"></span>Days off work</span>
       </div>
     </div>
   `;
@@ -476,8 +638,7 @@ function renderCalendar() {
   if (!el.calendarGrid) return;
   el.calendarGrid.innerHTML = "";
 
-  const bankHolidays = getBankHolidaysEnglandWales(year);
-  const bankSet = new Set(bankHolidays.map((x) => x.iso));
+  const bankSet = getBankHolidaySet(year);
   const holidayIdx = buildHolidayDayIndex(year);
 
   for (let month = 0; month < 12; month++) {
@@ -526,6 +687,7 @@ function renderCalendar() {
         const hasPrevSameTrip = prevSegments.some((s) => s.id === segment.id);
         const hasNextSameTrip = nextSegments.some((s) => s.id === segment.id);
         let classes = "trip-pill";
+        classes += ` status-${statusLabel}`;
         if (statusLabel === "completed") classes += " completed";
         if (!hasPrevSameTrip) classes += " start";
         if (!hasNextSameTrip) classes += " end";
@@ -543,6 +705,7 @@ function renderCalendar() {
 
 function render() {
   renderPeopleSummary();
+  renderHolidayHeatmap();
   renderHolidayTable();
   renderCalendar();
 }
@@ -561,12 +724,90 @@ function toggleView(view) {
 
 function openAllowanceModal() {
   if (!el.allowanceModal) return;
+  syncAllowanceEditorFromSelection();
   el.allowanceModal.classList.remove("hidden");
 }
 
 function closeAllowanceModal() {
   if (!el.allowanceModal) return;
   el.allowanceModal.classList.add("hidden");
+}
+
+function openPeopleModal() {
+  if (!el.peopleModal) return;
+  renderPeopleList();
+  el.peopleModal.classList.remove("hidden");
+}
+
+function closePeopleModal() {
+  if (!el.peopleModal) return;
+  el.peopleModal.classList.add("hidden");
+}
+
+function renderBankHolidayList() {
+  if (!el.bankHolidayList) return;
+  const rows = state.bankHolidays
+    .filter((h) => h.holidayYear === state.year)
+    .sort((a, b) => a.holidayDate.localeCompare(b.holidayDate))
+    .map((h) => `
+      <tr>
+        <td>${h.holidayDate}</td>
+        <td>${h.name}</td>
+        <td><button type="button" class="delete-bank-holiday" data-id="${h.id}">Delete</button></td>
+      </tr>`)
+    .join("");
+
+  if (!rows) {
+    el.bankHolidayList.innerHTML = `<p>No custom bank holidays set for ${state.year}. UK defaults will be used.</p>`;
+    return;
+  }
+
+  el.bankHolidayList.innerHTML = `
+    <table>
+      <thead><tr><th>Date</th><th>Name</th><th>Action</th></tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+  `;
+}
+
+function openBankHolidaysModal() {
+  if (!el.bankHolidaysModal) return;
+  renderBankHolidayList();
+  el.bankHolidaysModal.classList.remove("hidden");
+}
+
+function closeBankHolidaysModal() {
+  if (!el.bankHolidaysModal) return;
+  el.bankHolidaysModal.classList.add("hidden");
+}
+
+async function addBankHoliday(name, holidayDate) {
+  const payload = {
+    holiday_year: state.year,
+    holiday_date: holidayDate,
+    name,
+  };
+  const { error } = await db.from("bank_holidays").upsert(payload, { onConflict: "holiday_year,holiday_date" });
+  if (error) throw error;
+}
+
+async function deleteBankHoliday(id) {
+  const { error } = await db.from("bank_holidays").delete().eq("id", id);
+  if (error) throw error;
+}
+
+async function addPersonDirectory(name) {
+  const { error } = await db.from("people").insert({ name });
+  if (error) throw error;
+}
+
+async function removePersonDirectory(name) {
+  const [delPeople, delAllowances] = await Promise.all([
+    db.from("people").delete().eq("name", name),
+    db.from("people_allowance").delete().eq("name", name),
+  ]);
+  if (delPeople.error) throw delPeople.error;
+  if (delAllowances.error && String(delAllowances.error.code) !== "42P01") throw delAllowances.error;
 }
 
 async function upsertPerson(name, standard, additional) {
@@ -615,6 +856,8 @@ async function addHoliday(payload) {
     delete fallbackPayload.status;
     delete fallbackPayload.country;
     delete fallbackPayload.days_off_work;
+    delete fallbackPayload.start_half;
+    delete fallbackPayload.end_half;
     const retry = await db.from("holidays").insert(fallbackPayload);
     if (retry.error) throw retry.error;
     return;
@@ -630,11 +873,18 @@ async function updateHoliday(id, payload) {
     delete fallbackPayload.status;
     delete fallbackPayload.country;
     delete fallbackPayload.days_off_work;
+    delete fallbackPayload.start_half;
+    delete fallbackPayload.end_half;
     const retry = await db.from("holidays").update(fallbackPayload).eq("id", id);
     if (retry.error) throw retry.error;
     return;
   }
   throw error;
+}
+
+async function deleteHoliday(id) {
+  const { error } = await db.from("holidays").delete().eq("id", id);
+  if (error) throw error;
 }
 
 function openEditHolidayModal(holidayId) {
@@ -644,9 +894,17 @@ function openEditHolidayModal(holidayId) {
   el.editHolidayForm.elements.location.value = holiday.location;
   populateCountrySelect(el.editCountry, holiday.country || "United Kingdom");
   el.editHolidayForm.elements.startDate.value = holiday.startDate;
+  el.editHolidayForm.elements.startHalf.value = holiday.startHalf || "am";
   el.editHolidayForm.elements.endDate.value = holiday.endDate;
+  el.editHolidayForm.elements.endHalf.value = holiday.endHalf || "pm";
+  el.editHolidayForm.elements.tripLength.value = String(tripLengthDays(holiday));
   el.editHolidayForm.elements.daysOffWork.value = String(holiday.daysOffWork);
   el.editHolidayForm.elements.status.value = HOLIDAY_STATUSES.includes(holiday.status) ? holiday.status : "ideation";
+  el.editHolidayForm.dataset.endDateManual = "true";
+  const selectedPeople = Object.entries(holiday.peopleDays || {})
+    .filter(([, days]) => Number(days) > 0)
+    .map(([name]) => name);
+  renderPeopleCheckboxes(selectedPeople.length ? selectedPeople : state.peopleNames);
   el.editModal.classList.remove("hidden");
 }
 
@@ -670,7 +928,8 @@ if (el.personForm) el.personForm.addEventListener("submit", async (e) => {
     await upsertPerson(name, standard, additional);
     await loadData();
     render();
-    if (formEl && typeof formEl.reset === "function") formEl.reset();
+    if (el.allowancePerson) el.allowancePerson.value = name;
+    syncAllowanceEditorFromSelection();
     setStatusMessage(`Saved allowance for ${name}.`);
   } catch (err) {
     const reason = err?.message || "Unknown error";
@@ -678,6 +937,12 @@ if (el.personForm) el.personForm.addEventListener("submit", async (e) => {
     console.error("Save person error:", err);
   }
 });
+
+if (el.allowancePerson) {
+  el.allowancePerson.addEventListener("change", () => {
+    syncAllowanceEditorFromSelection();
+  });
+}
 
 if (el.holidayForm) el.holidayForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -688,34 +953,31 @@ if (el.holidayForm) el.holidayForm.addEventListener("submit", async (e) => {
   const location = String(data.get("location") || "").trim();
   const country = String(data.get("country") || "").trim();
   const startDate = String(data.get("startDate") || "");
+  const startHalf = String(data.get("startHalf") || "am");
   let endDate = String(data.get("endDate") || "");
-  let daysOffWork = Number(data.get("daysOffWork") || 0);
+  const endHalf = String(data.get("endHalf") || "pm");
   const status = String(data.get("status") || "ideation").toLowerCase();
 
-  const selected = Array.from(document.querySelectorAll('input[name="person"]:checked')).map((n) => n.value);
+  const selected = Array.from(formEl.querySelectorAll('input[name="person"]:checked')).map((n) => n.value);
 
   if (!location || !startDate || !selected.length) {
     setStatusMessage("Add location, start date, and select at least one person.", true);
     return;
   }
 
-  if (!endDate && !daysOffWork) {
-    setStatusMessage("Add either end date or days off work.", true);
+  if (!endDate) {
+    setStatusMessage("Add an end date.", true);
+    return;
+  }
+  const tripLength = calcTripLength(startDate, endDate, startHalf, endHalf);
+  const daysOffWork = businessDaysOffWork(startDate, endDate, startHalf, endHalf);
+  if (tripLength <= 0) {
+    setStatusMessage("Invalid half-day selection for this date range.", true);
     return;
   }
 
-  if (!endDate && daysOffWork) {
-    const s = parseDate(startDate);
-    endDate = formatDate(addDays(s, Math.ceil(daysOffWork) - 1));
-  }
-
-  if (!daysOffWork) {
-    daysOffWork = 1;
-  }
-
-  const split = Number((daysOffWork / selected.length).toFixed(2));
   const peopleDays = {};
-  for (const name of selected) peopleDays[name] = split;
+  for (const name of selected) peopleDays[name] = Number(daysOffWork.toFixed(2));
   const safeStatus = HOLIDAY_STATUSES.includes(status) ? status : "ideation";
 
   try {
@@ -723,8 +985,10 @@ if (el.holidayForm) el.holidayForm.addEventListener("submit", async (e) => {
       location,
       country,
       start_date: startDate,
+      start_half: startHalf,
       end_date: endDate,
-      days: daysOffWork,
+      end_half: endHalf,
+      days: tripLength,
       days_off_work: daysOffWork,
       status: safeStatus,
       people_days: peopleDays,
@@ -732,6 +996,7 @@ if (el.holidayForm) el.holidayForm.addEventListener("submit", async (e) => {
     await loadData();
     render();
     if (formEl && typeof formEl.reset === "function") formEl.reset();
+    formEl.dataset.endDateManual = "false";
     setStatusMessage(`Saved holiday: ${location}.`);
   } catch (err) {
     const reason = err?.message || "Unknown error";
@@ -747,8 +1012,148 @@ if (el.holidayTable) el.holidayTable.addEventListener("click", (e) => {
 });
 
 if (el.editCancel) el.editCancel.addEventListener("click", () => closeEditHolidayModal());
+if (el.openPeople) el.openPeople.addEventListener("click", () => openPeopleModal());
+if (el.peopleCancel) el.peopleCancel.addEventListener("click", () => closePeopleModal());
 if (el.openAllowance) el.openAllowance.addEventListener("click", () => openAllowanceModal());
 if (el.allowanceCancel) el.allowanceCancel.addEventListener("click", () => closeAllowanceModal());
+if (el.openBankHolidays) el.openBankHolidays.addEventListener("click", () => openBankHolidaysModal());
+if (el.bankHolidaysCancel) el.bankHolidaysCancel.addEventListener("click", () => closeBankHolidaysModal());
+
+if (el.bankHolidayForm) el.bankHolidayForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!db) return;
+  const data = new FormData(e.currentTarget);
+  const name = String(data.get("name") || "").trim();
+  const holidayDate = String(data.get("holidayDate") || "");
+  if (!name || !holidayDate) return;
+  try {
+    await addBankHoliday(name, holidayDate);
+    await loadData();
+    render();
+    renderBankHolidayList();
+    e.currentTarget.reset();
+    setStatusMessage(`Saved bank holiday: ${name}.`);
+  } catch (err) {
+    const reason = err?.message || "Unknown error";
+    setStatusMessage(`Could not save bank holiday: ${reason}`, true);
+  }
+});
+
+if (el.bankHolidayList) el.bankHolidayList.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button.delete-bank-holiday");
+  if (!btn || !db) return;
+  try {
+    await deleteBankHoliday(Number(btn.dataset.id));
+    await loadData();
+    render();
+    renderBankHolidayList();
+    setStatusMessage("Deleted bank holiday.");
+  } catch (err) {
+    const reason = err?.message || "Unknown error";
+    setStatusMessage(`Could not delete bank holiday: ${reason}`, true);
+  }
+});
+
+if (el.peopleForm) el.peopleForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  if (!db) return;
+  const data = new FormData(e.currentTarget);
+  const name = String(data.get("name") || "").trim();
+  if (!name) return;
+  try {
+    await addPersonDirectory(name);
+    await loadData();
+    render();
+    renderPeopleList();
+    e.currentTarget.reset();
+    setStatusMessage(`Added person: ${name}.`);
+  } catch (err) {
+    const reason = err?.message || "Unknown error";
+    setStatusMessage(`Could not add person: ${reason}`, true);
+  }
+});
+
+if (el.peopleList) el.peopleList.addEventListener("click", async (e) => {
+  const btn = e.target.closest("button.remove-person");
+  if (!btn || !db) return;
+  const name = btn.dataset.name;
+  try {
+    await removePersonDirectory(name);
+    await loadData();
+    render();
+    renderPeopleList();
+    setStatusMessage(`Removed person: ${name}.`);
+  } catch (err) {
+    const reason = err?.message || "Unknown error";
+    setStatusMessage(`Could not remove person: ${reason}`, true);
+  }
+});
+
+if (el.holidayForm) {
+  el.holidayForm.dataset.endDateManual = "false";
+  const syncAddForm = () => {
+    const start = el.holidayForm.elements.startDate.value;
+    const end = el.holidayForm.elements.endDate.value;
+    const startHalf = el.holidayForm.elements.startHalf.value || "am";
+    const endHalf = el.holidayForm.elements.endHalf.value || "pm";
+    if (!start) return;
+
+    if (start && end) {
+      el.holidayForm.elements.tripLength.value = String(calcTripLength(start, end, startHalf, endHalf));
+      el.holidayForm.elements.daysOffWork.value = String(businessDaysOffWork(start, end, startHalf, endHalf));
+    } else {
+      el.holidayForm.elements.tripLength.value = "";
+      el.holidayForm.elements.daysOffWork.value = "";
+    }
+  };
+  el.holidayForm.elements.startDate.addEventListener("change", () => {
+    const endManual = el.holidayForm.dataset.endDateManual === "true";
+    if (!endManual && el.holidayForm.elements.startDate.value) {
+      el.holidayForm.elements.endDate.value = el.holidayForm.elements.startDate.value;
+    }
+    syncAddForm();
+  });
+  el.holidayForm.elements.endDate.addEventListener("change", () => {
+    const end = el.holidayForm.elements.endDate.value;
+    el.holidayForm.dataset.endDateManual = end ? "true" : "false";
+    syncAddForm();
+  });
+  el.holidayForm.elements.startHalf.addEventListener("change", () => syncAddForm());
+  el.holidayForm.elements.endHalf.addEventListener("change", () => syncAddForm());
+}
+
+if (el.editHolidayForm) {
+  el.editHolidayForm.dataset.endDateManual = "true";
+  const syncEditForm = () => {
+    const start = el.editHolidayForm.elements.startDate.value;
+    const end = el.editHolidayForm.elements.endDate.value;
+    const startHalf = el.editHolidayForm.elements.startHalf.value || "am";
+    const endHalf = el.editHolidayForm.elements.endHalf.value || "pm";
+    if (!start) return;
+
+    if (start && end) {
+      el.editHolidayForm.elements.tripLength.value = String(calcTripLength(start, end, startHalf, endHalf));
+      el.editHolidayForm.elements.daysOffWork.value = String(businessDaysOffWork(start, end, startHalf, endHalf));
+    } else {
+      el.editHolidayForm.elements.tripLength.value = "";
+      el.editHolidayForm.elements.daysOffWork.value = "";
+    }
+  };
+  el.editHolidayForm.elements.startDate.addEventListener("change", () => {
+    const endManual = el.editHolidayForm.dataset.endDateManual === "true";
+    if (!endManual && el.editHolidayForm.elements.startDate.value) {
+      el.editHolidayForm.elements.endDate.value = el.editHolidayForm.elements.startDate.value;
+    }
+    syncEditForm();
+  });
+  el.editHolidayForm.elements.endDate.addEventListener("change", () => {
+    const end = el.editHolidayForm.elements.endDate.value;
+    el.editHolidayForm.dataset.endDateManual = end ? "true" : "false";
+    syncEditForm();
+  });
+  el.editHolidayForm.elements.startHalf.addEventListener("change", () => syncEditForm());
+  el.editHolidayForm.elements.endHalf.addEventListener("change", () => syncEditForm());
+}
 
 if (el.editHolidayForm) el.editHolidayForm.addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -759,25 +1164,38 @@ if (el.editHolidayForm) el.editHolidayForm.addEventListener("submit", async (e) 
   const location = String(data.get("location") || "").trim();
   const country = String(data.get("country") || "").trim();
   const startDate = String(data.get("startDate") || "");
+  const startHalf = String(data.get("startHalf") || "am");
   const endDate = String(data.get("endDate") || "");
-  const daysOffWork = Number(data.get("daysOffWork") || 0);
+  const endHalf = String(data.get("endHalf") || "pm");
   const status = String(data.get("status") || "ideation").toLowerCase();
   const safeStatus = HOLIDAY_STATUSES.includes(status) ? status : "ideation";
+  const tripLength = calcTripLength(startDate, endDate, startHalf, endHalf);
+  const daysOffWork = businessDaysOffWork(startDate, endDate, startHalf, endHalf);
+  const selected = Array.from(el.editHolidayForm.querySelectorAll('input[name="editPerson"]:checked')).map((n) => n.value);
 
-  if (!id || !location || !startDate || !endDate || !daysOffWork) {
+  if (!id || !location || !startDate || !endDate || !tripLength) {
     setStatusMessage("Please complete all edit fields.", true);
     return;
   }
+  if (!selected.length) {
+    setStatusMessage("Select at least one person for this holiday.", true);
+    return;
+  }
+  const peopleDays = {};
+  for (const name of selected) peopleDays[name] = Number(daysOffWork.toFixed(2));
 
   try {
     await updateHoliday(id, {
       location,
       country,
       start_date: startDate,
+      start_half: startHalf,
       end_date: endDate,
-      days: daysOffWork,
+      end_half: endHalf,
+      days: tripLength,
       days_off_work: daysOffWork,
       status: safeStatus,
+      people_days: peopleDays,
     });
     await loadData();
     render();
@@ -789,10 +1207,28 @@ if (el.editHolidayForm) el.editHolidayForm.addEventListener("submit", async (e) 
   }
 });
 
+if (el.removeHoliday) el.removeHoliday.addEventListener("click", async () => {
+  if (!db || !el.editHolidayForm) return;
+  const id = Number(el.editHolidayForm.elements.holidayId.value);
+  if (!id) return;
+  const ok = window.confirm("Remove this trip? This cannot be undone.");
+  if (!ok) return;
+  try {
+    await deleteHoliday(id);
+    await loadData();
+    render();
+    closeEditHolidayModal();
+    setStatusMessage("Trip removed.");
+  } catch (err) {
+    const reason = err?.message || "Unknown error";
+    setStatusMessage(`Could not remove trip: ${reason}`, true);
+  }
+});
+
 if (el.tableTab) el.tableTab.addEventListener("click", () => toggleView("table"));
 if (el.calendarTab) el.calendarTab.addEventListener("click", () => toggleView("calendar"));
-if (el.prevYear) el.prevYear.addEventListener("click", async () => { await changeYear(-1); });
-if (el.nextYear) el.nextYear.addEventListener("click", async () => { await changeYear(1); });
+if (el.prevYear) el.prevYear.addEventListener("click", async () => { await changeYear(-1); renderBankHolidayList(); });
+if (el.nextYear) el.nextYear.addEventListener("click", async () => { await changeYear(1); renderBankHolidayList(); });
 
 (async function init() {
   populateCountrySelect(el.addCountry, "United Kingdom");

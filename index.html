@@ -13,6 +13,9 @@
     <div class="backdrop"></div>
     <main class="app">
       <header class="hero">
+        <div style="display:flex;justify-content:flex-end;">
+          <button id="open-people" type="button">People Setup</button>
+        </div>
         <p class="kicker">MHP</p>
         <h1>Manatee Holiday Planner 🐳🏖️</h1>
       </header>
@@ -21,59 +24,20 @@
         <div class="calendar-controls top-year-controls">
           <button id="prev-year" type="button">Previous Year</button>
           <h3 id="planner-year"></h3>
-          <button id="next-year" type="button">Next Year</button>
+          <div>
+            <button id="open-allowance" type="button">Year Allowance</button>
+            <button id="open-bank-holidays" type="button">Bank Holidays</button>
+            <button id="next-year" type="button">Next Year</button>
+          </div>
         </div>
       </section>
 
       <section class="panel">
         <div class="panel-head">
           <h2>Holidays</h2>
-          <button id="open-allowance" type="button">Allowance</button>
         </div>
         <div id="allowance-summary"></div>
         <div id="holiday-heatmap"></div>
-      </section>
-
-      <section class="panel" aria-labelledby="holiday-heading">
-        <div class="panel-head">
-          <h2 id="holiday-heading">Add Holiday</h2>
-        </div>
-        <form id="holiday-form" class="grid-form" autocomplete="off" onsubmit="event.preventDefault(); return false;">
-          <label>
-            Trip / Location
-            <input type="text" name="location" placeholder="e.g. Athens" required />
-          </label>
-          <label>
-            Country
-            <select name="country" id="add-country" required></select>
-          </label>
-          <label>
-            Start date
-            <input type="date" name="startDate" required />
-          </label>
-          <label>
-            End date (optional)
-            <input type="date" name="endDate" />
-          </label>
-          <label>
-            Days off work
-            <input type="number" name="daysOffWork" min="0.5" step="0.5" placeholder="e.g. 5" />
-          </label>
-          <label>
-            Status
-            <select name="status" required>
-              <option value="ideation">Ideation</option>
-              <option value="planning">Planning</option>
-              <option value="booked">Booked</option>
-              <option value="happened">Happened</option>
-            </select>
-          </label>
-          <label class="full-width">
-            Who is taking this holiday?
-            <div id="people-checkboxes" class="checkbox-wrap"></div>
-          </label>
-          <button type="submit">Add Holiday</button>
-        </form>
       </section>
 
       <section class="panel" aria-labelledby="views-heading">
@@ -93,18 +57,105 @@
           <div id="calendar-grid" class="calendar-grid"></div>
         </div>
       </section>
+
+      <section class="panel" aria-labelledby="holiday-heading">
+        <div class="panel-head">
+          <h2 id="holiday-heading">Add Holiday</h2>
+        </div>
+        <form id="holiday-form" class="grid-form" autocomplete="off" onsubmit="event.preventDefault(); return false;">
+          <div class="form-row">
+            <label>
+              Trip / Location
+              <input type="text" name="location" placeholder="e.g. Athens" required />
+            </label>
+            <label>
+              Country
+              <select name="country" id="add-country" required></select>
+            </label>
+          </div>
+          <div class="form-row">
+            <label>
+              Start date
+              <input type="date" name="startDate" required />
+            </label>
+            <label>
+              Start half day
+              <select name="startHalf" required>
+                <option value="am">AM</option>
+                <option value="pm">PM</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-row">
+            <label>
+              End date
+              <input type="date" name="endDate" required />
+            </label>
+            <label>
+              End half day
+              <select name="endHalf" required>
+                <option value="pm">PM</option>
+                <option value="am">AM</option>
+              </select>
+            </label>
+          </div>
+          <label>
+            Status
+            <select name="status" required>
+              <option value="ideation">Ideation</option>
+              <option value="planning">Planning</option>
+              <option value="booked">Booked</option>
+              <option value="happened">Happened</option>
+            </select>
+          </label>
+          <label class="full-width">
+            Who is taking this holiday?
+            <div id="people-checkboxes" class="checkbox-wrap"></div>
+          </label>
+          <div class="form-row">
+            <label>
+              Total days
+              <input type="number" name="tripLength" min="0.5" step="0.5" readonly />
+            </label>
+            <label>
+              Days off work
+              <input type="number" name="daysOffWork" min="0" step="0.5" readonly />
+            </label>
+          </div>
+          <button type="submit">Add Holiday</button>
+        </form>
+      </section>
     </main>
+
+    <div id="people-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="people-heading">
+      <div class="modal-card">
+        <div class="panel-head">
+          <h2 id="people-heading">People Setup</h2>
+          <button id="people-cancel" type="button">Close</button>
+        </div>
+        <p>Add/remove people shared across all years.</p>
+        <form id="people-form" class="grid-form" autocomplete="off" onsubmit="event.preventDefault(); return false;">
+          <label>
+            Person
+            <input type="text" name="name" placeholder="e.g. Ben" required />
+          </label>
+          <button type="submit">Add Person</button>
+        </form>
+        <div id="people-list"></div>
+      </div>
+    </div>
 
     <div id="allowance-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="allowance-heading">
       <div class="modal-card">
         <div class="panel-head">
-          <h2 id="allowance-heading">Allowance Setup</h2>
+          <h2 id="allowance-heading">Year Allowance</h2>
           <button id="allowance-cancel" type="button">Close</button>
         </div>
+        <p>Set allowance values for <strong id="allowance-year-label"></strong>.</p>
         <form id="person-form" class="grid-form" autocomplete="off" onsubmit="event.preventDefault(); return false;">
           <label>
             Person
-            <input type="text" name="name" placeholder="e.g. Ben" required />
+            <select name="name" id="allowance-person" required></select>
           </label>
           <label>
             Standard days
@@ -128,26 +179,56 @@
         </div>
         <form id="edit-holiday-form" class="grid-form" autocomplete="off" onsubmit="event.preventDefault(); return false;">
           <input type="hidden" name="holidayId" />
-          <label>
-            Trip / Location
-            <input type="text" name="location" required />
+          <div class="form-row">
+            <label>
+              Trip / Location
+              <input type="text" name="location" required />
+            </label>
+            <label>
+              Country
+              <select name="country" id="edit-country" required></select>
+            </label>
+          </div>
+          <div class="form-row">
+            <label>
+              Start date
+              <input type="date" name="startDate" required />
+            </label>
+            <label>
+              Start half day
+              <select name="startHalf" required>
+                <option value="am">AM</option>
+                <option value="pm">PM</option>
+              </select>
+            </label>
+          </div>
+          <div class="form-row">
+            <label>
+              End date
+              <input type="date" name="endDate" required />
+            </label>
+            <label>
+              End half day
+              <select name="endHalf" required>
+                <option value="pm">PM</option>
+                <option value="am">AM</option>
+              </select>
+            </label>
+          </div>
+          <label class="full-width">
+            Who is taking this holiday?
+            <div id="edit-people-checkboxes" class="checkbox-wrap"></div>
           </label>
-          <label>
-            Country
-            <select name="country" id="edit-country" required></select>
-          </label>
-          <label>
-            Start date
-            <input type="date" name="startDate" required />
-          </label>
-          <label>
-            End date
-            <input type="date" name="endDate" required />
-          </label>
-          <label>
-            Days off work
-            <input type="number" name="daysOffWork" min="0.5" step="0.5" required />
-          </label>
+          <div class="form-row">
+            <label>
+              Total days
+              <input type="number" name="tripLength" min="0.5" step="0.5" readonly />
+            </label>
+            <label>
+              Days off work
+              <input type="number" name="daysOffWork" min="0" step="0.5" readonly />
+            </label>
+          </div>
           <label>
             Status
             <select name="status" required>
@@ -157,8 +238,33 @@
               <option value="happened">Happened</option>
             </select>
           </label>
-          <button type="submit">Save Changes</button>
+          <div class="form-actions-row">
+            <button type="button" id="remove-holiday" class="danger">Remove Trip</button>
+            <button type="submit">Save Changes</button>
+          </div>
         </form>
+      </div>
+    </div>
+
+    <div id="bank-holidays-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="bank-holidays-heading">
+      <div class="modal-card">
+        <div class="panel-head">
+          <h2 id="bank-holidays-heading">Bank Holidays</h2>
+          <button id="bank-holidays-cancel" type="button">Close</button>
+        </div>
+        <p>Manage bank holidays for the selected year. Days off work excludes weekends and these dates.</p>
+        <form id="bank-holiday-form" class="grid-form" autocomplete="off" onsubmit="event.preventDefault(); return false;">
+          <label>
+            Name
+            <input type="text" name="name" placeholder="e.g. Spring Bank Holiday" required />
+          </label>
+          <label>
+            Date
+            <input type="date" name="holidayDate" required />
+          </label>
+          <button type="submit">Add Bank Holiday</button>
+        </form>
+        <div id="bank-holiday-list"></div>
       </div>
     </div>
 
@@ -173,6 +279,6 @@
     </template>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="main.js?v=20260509-14"></script>
+    <script src="main.js?v=20260509-24"></script>
   </body>
 </html>
