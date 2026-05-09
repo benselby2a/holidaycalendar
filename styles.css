@@ -282,9 +282,38 @@ th, td {
 
 tr:hover { background: #fff7db; }
 
+.trip-row-mobile {
+  display: none;
+}
+
+.trip-mobile-card {
+  border: 2px solid #111;
+  background: #fff;
+  padding: 8px;
+}
+
+.trip-mobile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 6px;
+}
+
+.trip-mobile-row:last-child {
+  margin-bottom: 0;
+}
+
+.trip-mobile-title {
+  font-size: 0.9rem;
+}
+
 .month-row td {
   background: #fff1a8;
   border-top: 2px solid var(--line);
+  border-left: 3px solid #111;
+  border-right: 3px solid #111;
 }
 
 .month-row:hover td {
@@ -317,17 +346,17 @@ tr:hover { background: #fff7db; }
 }
 
 .status-completed {
-  background: #d7d7d7;
-  color: #3a3a3a;
+  background: #cfe2ff;
+  color: #0b3d91;
 }
 
 .past-trip-row td {
-  background: #f3f0eb;
-  color: #6b6257;
+  background: inherit;
+  color: inherit;
 }
 
 .past-trip-row:hover td {
-  background: #ece7e0;
+  background: #fff7db;
 }
 
 .allowance-summary {
@@ -343,6 +372,11 @@ tr:hover { background: #fff7db; }
   border-radius: 2px;
   padding: 6px 10px;
   font-size: 0.88rem;
+}
+
+.remaining-negative {
+  color: var(--warn);
+  font-weight: 700;
 }
 
 .heatmap-wrap {
@@ -365,6 +399,52 @@ tr:hover { background: #fff7db; }
   align-items: end;
   height: 170px;
   margin-top: 8px;
+  position: relative;
+  z-index: 2;
+}
+
+.intensity-chart-wrap {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.intensity-y-axis {
+  height: 170px;
+  margin-top: 8px;
+  display: grid;
+  grid-template-rows: 20px repeat(5, 1fr);
+  align-items: center;
+  justify-items: end;
+  font-size: 0.72rem;
+  color: #4f4f4f;
+}
+
+.y-axis-title {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #333;
+}
+
+.intensity-plot-wrap {
+  position: relative;
+}
+
+.intensity-y-grid {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 8px;
+  height: 170px;
+  display: grid;
+  grid-template-rows: repeat(5, 1fr);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.y-grid-line {
+  border-top: 1px dashed rgba(17, 17, 17, 0.25);
 }
 
 .month-bar-wrap {
@@ -433,6 +513,7 @@ tr:hover { background: #fff7db; }
   margin-top: 6px;
   font-size: 0.78rem;
   color: var(--muted);
+  flex-wrap: wrap;
 }
 
 .legend-swatch {
@@ -468,6 +549,33 @@ tr:hover { background: #fff7db; }
   flex-wrap: wrap;
   gap: 8px;
   justify-content: flex-end;
+}
+
+#prev-year,
+#next-year {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 0.85rem;
+}
+
+.top-year-controls {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+}
+
+.year-nav {
+  display: flex;
+  gap: 6px;
+  justify-self: start;
+}
+
+.top-year-controls > h3 {
+  justify-self: center;
+}
+
+.top-year-controls > div {
+  justify-self: end;
 }
 
 .calendar-grid {
@@ -557,7 +665,7 @@ tr:hover { background: #fff7db; }
 .day.day-status-ideation { background: #ffe8cc; }
 .day.day-status-planning { background: #fff6b3; }
 .day.day-status-booked { background: #d9f7d4; }
-.day.day-status-completed { background: #e6e6e6; }
+.day.day-status-completed { background: #dbe9ff; }
 .day.long-weekend { box-shadow: inset 0 0 0 2px var(--longweekend); }
 
 .day .mini {
@@ -608,8 +716,8 @@ tr:hover { background: #fff7db; }
 }
 
 .trip-pill.completed {
-  background: #d7d7d7;
-  color: #444;
+  background: #cfe2ff;
+  color: #0b3d91;
 }
 
 .trip-pill.start {
@@ -653,9 +761,29 @@ tr:hover { background: #fff7db; }
   .top-year-controls > div button {
     flex: 1 1 calc(50% - 4px);
   }
+  .top-year-controls {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .year-nav {
+    width: 100%;
+    justify-content: space-between;
+    order: 2;
+  }
+  .top-year-controls > h3 {
+    order: 1;
+    text-align: center;
+  }
   #prev-year,
   #next-year {
-    width: 100%;
+    width: calc(50% - 4px);
+    min-height: 34px;
+    padding: 6px 8px;
+    font-size: 0.82rem;
+  }
+  .top-year-controls > div:last-child {
+    order: 3;
   }
   .toggle {
     width: 100%;
@@ -681,6 +809,25 @@ tr:hover { background: #fff7db; }
   }
   table {
     min-width: 640px;
+  }
+  #holiday-table table {
+    min-width: 0;
+  }
+  #holiday-table thead tr:not(.month-row),
+  #holiday-table tr:not(.month-row):not(.trip-row-mobile) {
+    display: none;
+  }
+  #holiday-table .trip-row-mobile {
+    display: table-row;
+  }
+  #holiday-table .trip-row-mobile td {
+    border-bottom: 0;
+    padding: 6px 0;
+  }
+  .trip-mobile-people button {
+    width: auto;
+    min-height: 36px;
+    padding: 6px 10px;
   }
   .modal {
     padding: 8px;

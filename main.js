@@ -15,7 +15,7 @@ const state = {
   view: "table",
 };
 
-const HOLIDAY_STATUSES = ["ideation", "planning", "booked", "happened"];
+const HOLIDAY_STATUSES = ["planning", "booked", "happened"];
 const RECOGNIZED_COUNTRIES = [
   "Afghanistan","Albania","Algeria","Andorra","Angola","Antigua and Barbuda","Argentina","Armenia","Australia","Austria",
   "Azerbaijan","Bahamas","Bahrain","Bangladesh","Barbados","Belarus","Belgium","Belize","Benin","Bhutan","Bolivia",
@@ -294,7 +294,9 @@ function calcTripLength(startDateText, endDateText, startHalf = "am", endHalf = 
 
 function displayStatus(holiday) {
   if (holiday.endDate < todayIsoLocal()) return "completed";
-  return holiday.status || "ideation";
+  const normalized = String(holiday.status || "").toLowerCase();
+  if (normalized === "ideation") return "planning";
+  return HOLIDAY_STATUSES.includes(normalized) ? normalized : "planning";
 }
 
 async function loadData() {
@@ -341,7 +343,7 @@ async function loadData() {
     startHalf: h.start_half || "am",
     endHalf: h.end_half || "pm",
     daysOffWork: Number(h.days_off_work ?? h.days),
-    status: h.status || "ideation",
+    status: (String(h.status || "").toLowerCase() === "ideation") ? "planning" : (h.status || "planning"),
     peopleDays: h.people_days || {},
   }));
   state.bankHolidays = (bankHolidaysRes.data || []).map((h) => ({
@@ -407,6 +409,7 @@ function renderPeopleSummary() {
       const planned = holidayDaysForPerson(name);
       const total = standard + additional;
       const remaining = total - planned;
+      const remainingClass = remaining < 0 ? "remaining-negative" : "";
       return `
       <tr>
         <td>${name}</td>
@@ -414,7 +417,7 @@ function renderPeopleSummary() {
         <td>${additional}</td>
         <td>${total}</td>
         <td>${planned}</td>
-        <td>${remaining}</td>
+        <td class="${remainingClass}">${remaining}</td>
       </tr>`;
     })
     .join("");
@@ -446,7 +449,8 @@ function renderPeopleSummary() {
       const planned = holidayDaysForPerson(name);
       const total = standard + additional;
       const remaining = total - planned;
-      return `<span class="allowance-chip"><strong>${name}</strong>: ${remaining} remaining</span>`;
+      const remainingClass = remaining < 0 ? "remaining-negative" : "";
+      return `<span class="allowance-chip"><strong>${name}</strong>: <span class="${remainingClass}">${remaining}</span> remaining</span>`;
     })
     .join("");
   if (el.allowanceSummary) el.allowanceSummary.innerHTML = `<div class="allowance-summary">${summaryChips}</div>`;
@@ -497,15 +501,21 @@ function renderHolidayHeatmap() {
     const monthIdx = s.getMonth();
     monthTripTotals[monthIdx] += length;
     monthDaysOffTotals[monthIdx] += daysOffWork;
-
-    for (const d of dateRange(s, e)) {
-      if (d.getFullYear() !== year) continue;
-      // no-op loop kept for stable behavior if ranges cross years in future logic
-    }
   }
 
   const maxVal = Math.max(...monthTripTotals, ...monthDaysOffTotals, 1);
   const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(maxVal * f));
+  const yTickMarkup = yTicks
+    .slice()
+    .reverse()
+    .map((v) => `<span>${v}</span>`)
+    .join("");
+  const yGridMarkup = yTicks
+    .slice()
+    .reverse()
+    .map(() => `<span class="y-grid-line"></span>`)
+    .join("");
   const bars = monthShort
     .map((label, idx) => {
       const tripVal = monthTripTotals[idx];
@@ -518,7 +528,7 @@ function renderHolidayHeatmap() {
           <div class="month-bar month-bar-total" style="height:${tripH}px"></div>
           <div class="month-bar month-bar-off" style="height:${offH}px"></div>
         </div>
-        <span class="month-val">${tripVal}/${offVal}</span>
+        <span class="month-val"></span>
         <span class="month-label">${label}</span>
       </div>`;
     })
@@ -527,7 +537,16 @@ function renderHolidayHeatmap() {
   el.holidayHeatmap.innerHTML = `
     <div class="heatmap-wrap">
       <p><strong>Holiday Intensity By Month (${year})</strong></p>
-      <div class="month-intensity-chart">${bars}</div>
+      <div class="intensity-chart-wrap">
+        <div class="intensity-y-axis" aria-hidden="true">
+          <span class="y-axis-title">Days</span>
+          ${yTickMarkup}
+        </div>
+        <div class="intensity-plot-wrap">
+          <div class="intensity-y-grid" aria-hidden="true">${yGridMarkup}</div>
+          <div class="month-intensity-chart">${bars}</div>
+        </div>
+      </div>
       <div class="heatmap-legend">
         <span><span class="legend-swatch legend-total"></span>Total holiday days</span>
         <span><span class="legend-swatch legend-off"></span>Days off work</span>
@@ -577,6 +596,25 @@ function renderHolidayTable() {
         <td>${benDays || "-"}</td>
         <td>${louiseDays || "-"}</td>
         <td><button type="button" class="edit-trip" data-id="${h.id}">Edit</button></td>
+      </tr>
+      <tr class="trip-row-mobile ${pastClass}">
+        <td colspan="10">
+          <div class="trip-mobile-card">
+            <div class="trip-mobile-row trip-mobile-title">
+              <strong>${h.location}</strong> · ${h.country || "-"} · ${h.startDate} to ${h.endDate}
+            </div>
+            <div class="trip-mobile-row trip-mobile-meta">
+              <span>Days off: <strong>${h.daysOffWork}</strong></span>
+              <span>Length: <strong>${tripLength}</strong></span>
+              <span><span class="tag status-${statusLabel}">${statusLabel}</span></span>
+            </div>
+            <div class="trip-mobile-row trip-mobile-people">
+              <span>Ben: <strong>${benDays || "-"}</strong></span>
+              <span>Louise: <strong>${louiseDays || "-"}</strong></span>
+              <button type="button" class="edit-trip" data-id="${h.id}">Edit</button>
+            </div>
+          </div>
+        </td>
       </tr>`;
       }).join("");
 
@@ -708,7 +746,7 @@ function renderCalendar() {
       if (hasHoliday) {
         const segment = holidayIdx.get(iso)[0];
         const holiday = state.holidays.find((h) => String(h.id) === String(segment.id));
-        const statusLabel = holiday ? displayStatus(holiday) : "ideation";
+        const statusLabel = holiday ? displayStatus(holiday) : "planning";
         node.classList.add(`day-status-${statusLabel}`);
         const prevIso = formatDate(addDays(date, -1));
         const nextIso = formatDate(addDays(date, 1));
@@ -934,7 +972,8 @@ function openEditHolidayModal(holidayId) {
   el.editHolidayForm.elements.endHalf.value = holiday.endHalf || "pm";
   el.editHolidayForm.elements.tripLength.value = String(tripLengthDays(holiday));
   el.editHolidayForm.elements.daysOffWork.value = String(holiday.daysOffWork);
-  el.editHolidayForm.elements.status.value = HOLIDAY_STATUSES.includes(holiday.status) ? holiday.status : "ideation";
+  const editStatus = String(holiday.status || "").toLowerCase() === "ideation" ? "planning" : holiday.status;
+  el.editHolidayForm.elements.status.value = HOLIDAY_STATUSES.includes(editStatus) ? editStatus : "planning";
   el.editHolidayForm.dataset.endDateManual = "true";
   const selectedPeople = Object.entries(holiday.peopleDays || {})
     .filter(([, days]) => Number(days) > 0)
@@ -991,7 +1030,7 @@ if (el.holidayForm) el.holidayForm.addEventListener("submit", async (e) => {
   const startHalf = String(data.get("startHalf") || "am");
   let endDate = String(data.get("endDate") || "");
   const endHalf = String(data.get("endHalf") || "pm");
-  const status = String(data.get("status") || "ideation").toLowerCase();
+  const status = String(data.get("status") || "planning").toLowerCase();
 
   const selected = Array.from(formEl.querySelectorAll('input[name="person"]:checked')).map((n) => n.value);
 
@@ -1013,7 +1052,7 @@ if (el.holidayForm) el.holidayForm.addEventListener("submit", async (e) => {
 
   const peopleDays = {};
   for (const name of selected) peopleDays[name] = Number(daysOffWork.toFixed(2));
-  const safeStatus = HOLIDAY_STATUSES.includes(status) ? status : "ideation";
+  const safeStatus = HOLIDAY_STATUSES.includes(status) ? status : "planning";
 
   try {
     await addHoliday({
@@ -1204,8 +1243,8 @@ if (el.editHolidayForm) el.editHolidayForm.addEventListener("submit", async (e) 
   const startHalf = String(data.get("startHalf") || "am");
   const endDate = String(data.get("endDate") || "");
   const endHalf = String(data.get("endHalf") || "pm");
-  const status = String(data.get("status") || "ideation").toLowerCase();
-  const safeStatus = HOLIDAY_STATUSES.includes(status) ? status : "ideation";
+  const status = String(data.get("status") || "planning").toLowerCase();
+  const safeStatus = HOLIDAY_STATUSES.includes(status) ? status : "planning";
   const tripLength = calcTripLength(startDate, endDate, startHalf, endHalf);
   const daysOffWork = businessDaysOffWork(startDate, endDate, startHalf, endHalf);
   const selected = Array.from(el.editHolidayForm.querySelectorAll('input[name="editPerson"]:checked')).map((n) => n.value);
