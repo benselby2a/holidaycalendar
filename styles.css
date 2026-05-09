@@ -44,6 +44,10 @@ body {
   position: relative;
 }
 
+.hero > div {
+  margin-bottom: 8px;
+}
+
 .hero h1 {
   margin: 0;
   font-family: "Fraunces", serif;
@@ -145,6 +149,7 @@ button {
   background: var(--accent);
   color: #fff;
   border-radius: 2px;
+  min-height: 44px;
   padding: 10px 14px;
   cursor: pointer;
   font-weight: 700;
@@ -169,6 +174,46 @@ button:hover { transform: translate(-1px, -1px); }
   gap: 6px;
 }
 
+.half-toggle {
+  display: inline-grid;
+  grid-template-columns: 1fr 1fr;
+  border: 2px solid #111;
+  border-radius: 2px;
+  overflow: hidden;
+  width: 100%;
+  max-width: 180px;
+  background: #fff;
+}
+
+.half-toggle label {
+  margin: 0;
+}
+
+.half-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.half-toggle span {
+  display: block;
+  text-align: center;
+  padding: 8px 10px;
+  border-right: 2px solid #111;
+  font-weight: 700;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+}
+
+.half-toggle label:last-child span {
+  border-right: 0;
+}
+
+.half-toggle input:checked + span {
+  background: var(--yellow);
+}
+
 .toggle {
   display: flex;
   gap: 8px;
@@ -183,6 +228,14 @@ button:hover { transform: translate(-1px, -1px); }
   background: var(--yellow);
   border-color: #111;
   color: white;
+}
+
+#holiday-table,
+#people-summary,
+#people-list,
+#bank-holiday-list {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .hidden { display: none; }
@@ -204,6 +257,8 @@ button:hover { transform: translate(-1px, -1px); }
 
 .modal-card {
   width: min(760px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow: auto;
   background: var(--panel);
   border: 3px solid var(--line);
   border-radius: 4px;
@@ -213,6 +268,7 @@ button:hover { transform: translate(-1px, -1px); }
 
 table {
   width: 100%;
+  min-width: 760px;
   border-collapse: collapse;
   margin-top: 10px;
   font-size: 0.92rem;
@@ -400,10 +456,18 @@ tr:hover { background: #fff7db; }
   justify-content: space-between;
   align-items: center;
   margin-top: 12px;
+  gap: 8px;
 }
 
 .top-year-controls {
   margin-top: 0;
+}
+
+.top-year-controls > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-end;
 }
 
 .calendar-grid {
@@ -411,13 +475,24 @@ tr:hover { background: #fff7db; }
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 10px;
+  width: 100%;
 }
 
 .month-card {
   border: 3px solid var(--line);
   border-radius: 2px;
   padding: 8px;
-  background: #fff;
+  background: linear-gradient(180deg, #fffef8 0%, #fff8df 100%);
+  min-width: 0;
+  overflow: hidden;
+}
+
+.month-card h4 {
+  display: inline-block;
+  margin-bottom: 4px;
+  padding: 2px 8px;
+  border: 2px solid #111;
+  background: var(--yellow);
 }
 
 .days-header,
@@ -427,50 +502,81 @@ tr:hover { background: #fff7db; }
   gap: 2px;
 }
 
+.days-grid {
+  overflow: hidden;
+  position: relative;
+  z-index: 2;
+}
+
 .days-header {
   color: var(--muted);
   font-size: 0.7rem;
   margin: 6px 0;
+  position: relative;
+  z-index: 1;
+  font-weight: 700;
 }
 
 .day {
-  min-height: 52px;
+  min-height: 46px;
   border: 2px solid #111;
   border-radius: 2px;
-  padding: 3px;
-  font-size: 0.72rem;
-  background: #fff;
+  padding: 2px;
+  font-size: 0.68rem;
+  background: #fffdf7;
   display: flex;
   flex-direction: column;
+  min-width: 0;
+  overflow: visible;
+  position: relative;
+  z-index: 1;
+}
+
+.day.has-trip-label {
+  z-index: 6;
 }
 
 .day.empty {
   border-style: dashed;
-  background: #f9f3ea;
+  background: #f2eee6;
 }
 
 .day .num {
   font-weight: 700;
   font-size: 0.75rem;
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.75);
+  padding: 0 3px;
 }
 
-.day.bank { background: var(--bank); }
+.day.bank {
+  background: #fff;
+  box-shadow: inset 0 0 0 2px var(--red);
+}
 .day.holiday { background: var(--holiday); }
+.day.day-status-ideation { background: #ffe8cc; }
+.day.day-status-planning { background: #fff6b3; }
+.day.day-status-booked { background: #d9f7d4; }
+.day.day-status-completed { background: #e6e6e6; }
 .day.long-weekend { box-shadow: inset 0 0 0 2px var(--longweekend); }
 
 .day .mini {
   display: block;
-  margin-top: 2px;
+  margin-top: 1px;
   color: #233;
+  font-size: 0.62rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .trip-pill {
   display: block;
-  margin-top: 3px;
-  min-height: 18px;
-  line-height: 18px;
-  font-size: 0.66rem;
-  padding: 0 6px;
+  margin-top: 2px;
+  min-height: 16px;
+  line-height: 14px;
+  font-size: 0.6rem;
+  padding: 0 4px;
   color: #111;
   background: #cfe2ff;
   border-radius: 0;
@@ -478,6 +584,12 @@ tr:hover { background: #fff7db; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  max-width: calc((var(--trip-span, 1) * 100%) - ((var(--trip-span, 1) - 1) * 2px));
+  width: calc((var(--trip-span, 1) * 100%) - ((var(--trip-span, 1) - 1) * 2px));
+  position: relative;
+  left: 0;
+  box-sizing: border-box;
+  z-index: 10;
 }
 
 .trip-pill.status-ideation {
@@ -515,7 +627,67 @@ tr:hover { background: #fff7db; }
 }
 
 @media (max-width: 700px) {
+  .app {
+    padding: 12px 10px 40px;
+  }
+  .hero h1 {
+    font-size: clamp(1.5rem, 8vw, 2rem);
+  }
+  .kicker {
+    font-size: 0.72rem;
+  }
+  .panel {
+    padding: 10px;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.18);
+  }
+  .calendar-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .calendar-controls h3 {
+    text-align: center;
+  }
+  .top-year-controls > div {
+    justify-content: stretch;
+  }
+  .top-year-controls > div button {
+    flex: 1 1 calc(50% - 4px);
+  }
+  #prev-year,
+  #next-year {
+    width: 100%;
+  }
+  .toggle {
+    width: 100%;
+  }
+  .toggle button {
+    flex: 1;
+  }
   .calendar-grid { grid-template-columns: 1fr; }
   .panel-head { flex-direction: column; align-items: flex-start; }
   .form-row { grid-template-columns: 1fr; }
+  .form-actions-row {
+    flex-direction: column-reverse;
+    align-items: stretch;
+  }
+  .form-actions-row button {
+    width: 100%;
+  }
+  .checkbox-wrap {
+    gap: 8px;
+  }
+  .checkbox-wrap label {
+    min-height: 36px;
+  }
+  table {
+    min-width: 640px;
+  }
+  .modal {
+    padding: 8px;
+  }
+  .modal-card {
+    max-height: calc(100vh - 16px);
+    padding: 10px;
+    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.25);
+  }
 }

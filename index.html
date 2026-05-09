@@ -80,10 +80,10 @@
             </label>
             <label>
               Start half day
-              <select name="startHalf" required>
-                <option value="am">AM</option>
-                <option value="pm">PM</option>
-              </select>
+              <span class="half-toggle" role="radiogroup" aria-label="Start half day">
+                <label><input type="radio" name="startHalf" value="am" checked required /><span>AM</span></label>
+                <label><input type="radio" name="startHalf" value="pm" required /><span>PM</span></label>
+              </span>
             </label>
           </div>
           <div class="form-row">
@@ -93,10 +93,10 @@
             </label>
             <label>
               End half day
-              <select name="endHalf" required>
-                <option value="pm">PM</option>
-                <option value="am">AM</option>
-              </select>
+              <span class="half-toggle" role="radiogroup" aria-label="End half day">
+                <label><input type="radio" name="endHalf" value="am" required /><span>AM</span></label>
+                <label><input type="radio" name="endHalf" value="pm" checked required /><span>PM</span></label>
+              </span>
             </label>
           </div>
           <label>
@@ -196,10 +196,10 @@
             </label>
             <label>
               Start half day
-              <select name="startHalf" required>
-                <option value="am">AM</option>
-                <option value="pm">PM</option>
-              </select>
+              <span class="half-toggle" role="radiogroup" aria-label="Edit start half day">
+                <label><input type="radio" name="startHalf" value="am" checked required /><span>AM</span></label>
+                <label><input type="radio" name="startHalf" value="pm" required /><span>PM</span></label>
+              </span>
             </label>
           </div>
           <div class="form-row">
@@ -209,10 +209,10 @@
             </label>
             <label>
               End half day
-              <select name="endHalf" required>
-                <option value="pm">PM</option>
-                <option value="am">AM</option>
-              </select>
+              <span class="half-toggle" role="radiogroup" aria-label="Edit end half day">
+                <label><input type="radio" name="endHalf" value="am" required /><span>AM</span></label>
+                <label><input type="radio" name="endHalf" value="pm" checked required /><span>PM</span></label>
+              </span>
             </label>
           </div>
           <label class="full-width">
@@ -279,6 +279,6 @@
     </template>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="main.js?v=20260509-24"></script>
+    <script src="main.js?v=20260509-26"></script>
   </body>
 </html>

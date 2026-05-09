@@ -652,6 +652,40 @@ function renderCalendar() {
     let weekday = first.getDay();
     weekday = weekday === 0 ? 7 : weekday;
 
+    const tripLabelAnchors = new Map();
+    const tripBestRun = new Map();
+    const visualRowForDay = (d) => Math.floor((weekday - 1 + (d - 1)) / 7);
+    for (let d = 1; d <= daysInMonth; ) {
+      const iso = formatDate(new Date(year, month, d));
+      const segs = holidayIdx.get(iso) || [];
+      const tripId = segs[0]?.id || null;
+      if (!tripId) {
+        d += 1;
+        continue;
+      }
+      const row = visualRowForDay(d);
+      const runStart = d;
+      let runEnd = d;
+      while (runEnd + 1 <= daysInMonth) {
+        const nextDay = runEnd + 1;
+        if (visualRowForDay(nextDay) !== row) break;
+        const nextIso = formatDate(new Date(year, month, nextDay));
+        const nextSegs = holidayIdx.get(nextIso) || [];
+        if (!nextSegs.some((s) => s.id === tripId)) break;
+        runEnd = nextDay;
+      }
+      const runLen = runEnd - runStart + 1;
+      const best = tripBestRun.get(tripId);
+      if (!best || runLen > best.runLen) {
+        const anchorDay = runLen >= 3 ? runStart + 1 : runStart;
+        tripBestRun.set(tripId, { day: anchorDay, runLen: runEnd - anchorDay + 1 });
+      }
+      d = runEnd + 1;
+    }
+    for (const [tripId, info] of tripBestRun.entries()) {
+      tripLabelAnchors.set(`${tripId}:${info.day}`, info.runLen);
+    }
+
     for (let i = 1; i < weekday; i++) {
       const empty = document.createElement("div");
       empty.className = "day empty";
@@ -670,16 +704,12 @@ function renderCalendar() {
       if (hasBank) node.classList.add("bank");
       if (hasHoliday) node.classList.add("holiday");
 
-      const isLongWeekend =
-        date.getDay() === 1 && bankSet.has(formatDate(addDays(date, -3))) ||
-        date.getDay() === 5 && bankSet.has(formatDate(addDays(date, 3)));
-      if (isLongWeekend) node.classList.add("long-weekend");
-
       let tripMarkup = "";
       if (hasHoliday) {
         const segment = holidayIdx.get(iso)[0];
         const holiday = state.holidays.find((h) => String(h.id) === String(segment.id));
         const statusLabel = holiday ? displayStatus(holiday) : "ideation";
+        node.classList.add(`day-status-${statusLabel}`);
         const prevIso = formatDate(addDays(date, -1));
         const nextIso = formatDate(addDays(date, 1));
         const prevSegments = holidayIdx.get(prevIso) || [];
@@ -691,10 +721,15 @@ function renderCalendar() {
         if (statusLabel === "completed") classes += " completed";
         if (!hasPrevSameTrip) classes += " start";
         if (!hasNextSameTrip) classes += " end";
-        tripMarkup = `<span class="${classes}">${segment.isStart ? segment.location : ""}</span>`;
+        const labelSpan = tripLabelAnchors.get(`${segment.id}:${day}`);
+        if (labelSpan) {
+          node.classList.add("has-trip-label");
+          const fullName = String(segment.location || "").replace(/"/g, "&quot;");
+          tripMarkup = `<span class="${classes}" style="--trip-span:${labelSpan}" title="${fullName}" aria-label="${fullName}" tabindex="0">${segment.location}</span>`;
+        }
       }
 
-      node.innerHTML = `<span class="num">${day}</span>${hasBank ? '<span class="mini">Bank Holiday</span>' : ""}${tripMarkup}`;
+      node.innerHTML = `<span class="num">${day}</span>${tripMarkup}`;
       if (isWeekend(date)) node.style.opacity = "0.9";
       daysGrid.appendChild(node);
     }
@@ -1118,8 +1153,9 @@ if (el.holidayForm) {
     el.holidayForm.dataset.endDateManual = end ? "true" : "false";
     syncAddForm();
   });
-  el.holidayForm.elements.startHalf.addEventListener("change", () => syncAddForm());
-  el.holidayForm.elements.endHalf.addEventListener("change", () => syncAddForm());
+  for (const node of el.holidayForm.querySelectorAll('input[name="startHalf"], input[name="endHalf"]')) {
+    node.addEventListener("change", () => syncAddForm());
+  }
 }
 
 if (el.editHolidayForm) {
@@ -1151,8 +1187,9 @@ if (el.editHolidayForm) {
     el.editHolidayForm.dataset.endDateManual = end ? "true" : "false";
     syncEditForm();
   });
-  el.editHolidayForm.elements.startHalf.addEventListener("change", () => syncEditForm());
-  el.editHolidayForm.elements.endHalf.addEventListener("change", () => syncEditForm());
+  for (const node of el.editHolidayForm.querySelectorAll('input[name="startHalf"], input[name="endHalf"]')) {
+    node.addEventListener("change", () => syncEditForm());
+  }
 }
 
 if (el.editHolidayForm) el.editHolidayForm.addEventListener("submit", async (e) => {
