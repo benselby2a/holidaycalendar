@@ -84,6 +84,27 @@ body {
   gap: 10px;
 }
 
+.planner-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.hide-completed-toggle {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+.hide-completed-toggle input {
+  margin: 0;
+}
+
 h2, h3, h4 {
   margin: 0;
 }
@@ -309,6 +330,18 @@ tr:hover { background: #fff7db; }
   font-size: 0.9rem;
 }
 
+.trip-mobile-dates {
+  justify-content: flex-start;
+  gap: 6px;
+  font-size: 0.85rem;
+  color: #2f2f2f;
+}
+
+.trip-bank-holidays {
+  font-size: 0.78rem;
+  color: #4f4f4f;
+}
+
 .month-row td {
   background: #fff1a8;
   border-top: 2px solid var(--line);
@@ -408,6 +441,8 @@ tr:hover { background: #fff7db; }
   grid-template-columns: 42px 1fr;
   gap: 8px;
   align-items: stretch;
+  width: 100%;
+  min-width: 0;
 }
 
 .intensity-y-axis {
@@ -429,6 +464,8 @@ tr:hover { background: #fff7db; }
 
 .intensity-plot-wrap {
   position: relative;
+  min-width: 0;
+  width: 100%;
 }
 
 .intensity-y-grid {
@@ -551,13 +588,6 @@ tr:hover { background: #fff7db; }
   justify-content: flex-end;
 }
 
-#prev-year,
-#next-year {
-  min-height: 34px;
-  padding: 6px 10px;
-  font-size: 0.85rem;
-}
-
 .top-year-controls {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -568,6 +598,18 @@ tr:hover { background: #fff7db; }
   display: flex;
   gap: 6px;
   justify-self: start;
+  align-items: center;
+}
+
+.year-select-label {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+#year-select {
+  min-height: 34px;
+  padding: 6px 10px;
+  min-width: 110px;
 }
 
 .top-year-controls > h3 {
@@ -768,16 +810,15 @@ tr:hover { background: #fff7db; }
   }
   .year-nav {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-start;
     order: 2;
   }
   .top-year-controls > h3 {
     order: 1;
     text-align: center;
   }
-  #prev-year,
-  #next-year {
-    width: calc(50% - 4px);
+  #year-select {
+    width: 100%;
     min-height: 34px;
     padding: 6px 8px;
     font-size: 0.82rem;
@@ -792,7 +833,36 @@ tr:hover { background: #fff7db; }
     flex: 1;
   }
   .calendar-grid { grid-template-columns: 1fr; }
+  #calendar-view,
+  .calendar-grid,
+  .month-card {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .days-header,
+  .days-grid {
+    min-width: 0;
+  }
+  .intensity-chart-wrap {
+    grid-template-columns: 34px minmax(0, 1fr);
+    gap: 6px;
+  }
+  .intensity-y-axis {
+    font-size: 0.66rem;
+  }
+  .month-intensity-chart {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .month-label {
+    font-size: 0.62rem;
+  }
   .panel-head { flex-direction: column; align-items: flex-start; }
+  .planner-heading {
+    width: 100%;
+    justify-content: space-between;
+  }
   .form-row { grid-template-columns: 1fr; }
   .form-actions-row {
     flex-direction: column-reverse;

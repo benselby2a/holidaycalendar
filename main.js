@@ -1,9 +1,33 @@
 const SUPABASE_URL = "https://tihctdvsekfanduisaop.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_eOQgde9zeKpa5ld1BH08JQ_irX2xVnb";
+const HIDE_COMPLETED_STORAGE_KEY = "holidayPlanner.hideCompletedTrips";
 
 let db = null;
 if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
   db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+}
+
+function defaultPlannerYear() {
+  const now = new Date();
+  const currentYear = now.getFullYear();
+  const isLastMonthOfYear = now.getMonth() === 11;
+  return isLastMonthOfYear ? currentYear + 1 : currentYear;
+}
+
+function readHideCompletedPref() {
+  try {
+    return window.localStorage.getItem(HIDE_COMPLETED_STORAGE_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
+function writeHideCompletedPref(value) {
+  try {
+    window.localStorage.setItem(HIDE_COMPLETED_STORAGE_KEY, value ? "1" : "0");
+  } catch (_) {
+    // Ignore localStorage access issues (private mode, browser policy, etc.)
+  }
 }
 
 const state = {
@@ -11,11 +35,15 @@ const state = {
   peopleNames: [],
   holidays: [],
   bankHolidays: [],
-  year: new Date().getFullYear(),
+  year: defaultPlannerYear(),
+  hideCompleted: readHideCompletedPref(),
   view: "table",
 };
 
 const HOLIDAY_STATUSES = ["planning", "booked", "happened"];
+const BASE_YEAR = new Date().getFullYear();
+const YEAR_MIN = BASE_YEAR - 2;
+const YEAR_MAX = BASE_YEAR + 3;
 const RECOGNIZED_COUNTRIES = [
   "Afghanistan","Albania","Algeria","Andorra","Angola","Antigua and Barbuda","Argentina","Armenia","Australia","Austria",
   "Azerbaijan","Bahamas","Bahrain","Bangladesh","Barbados","Belarus","Belgium","Belize","Benin","Bhutan","Bolivia",
@@ -67,8 +95,8 @@ const el = {
   calendarTab: document.getElementById("calendar-tab"),
   tableView: document.getElementById("table-view"),
   calendarView: document.getElementById("calendar-view"),
-  prevYear: document.getElementById("prev-year"),
-  nextYear: document.getElementById("next-year"),
+  hideCompleted: document.getElementById("hide-completed"),
+  yearSelect: document.getElementById("year-select"),
   openBankHolidays: document.getElementById("open-bank-holidays"),
   bankHolidaysModal: document.getElementById("bank-holidays-modal"),
   bankHolidaysCancel: document.getElementById("bank-holidays-cancel"),
@@ -116,6 +144,24 @@ function parseDate(dateText) {
 
 function formatDate(date) {
   return date.toISOString().slice(0, 10);
+}
+
+function ordinalSuffix(day) {
+  const mod100 = day % 100;
+  if (mod100 >= 11 && mod100 <= 13) return "th";
+  const mod10 = day % 10;
+  if (mod10 === 1) return "st";
+  if (mod10 === 2) return "nd";
+  if (mod10 === 3) return "rd";
+  return "th";
+}
+
+function formatDayMonth(dateText) {
+  if (!dateText) return "";
+  const date = parseDate(dateText);
+  const day = date.getDate();
+  const month = date.toLocaleDateString("en-GB", { month: "long" });
+  return `${day}${ordinalSuffix(day)} ${month}`;
 }
 
 function todayIsoLocal() {
@@ -252,6 +298,39 @@ function getBankHolidaySet(year) {
     .map((h) => h.holidayDate);
   if (custom.length) return new Set(custom);
   return new Set(getBankHolidaysEnglandWales(year).map((x) => x.iso));
+}
+
+function getBankHolidayNameMap(year) {
+  const custom = state.bankHolidays
+    .filter((h) => Number(h.holidayYear) === year)
+    .sort((a, b) => a.holidayDate.localeCompare(b.holidayDate));
+  if (custom.length) {
+    const map = new Map();
+    for (const h of custom) map.set(h.holidayDate, h.name);
+    return map;
+  }
+  const defaults = getBankHolidaysEnglandWales(year);
+  return new Map(defaults.map((h) => [h.iso, h.name]));
+}
+
+function bankHolidayNamesInRange(startDateText, endDateText) {
+  const start = parseDate(startDateText);
+  const end = parseDate(endDateText);
+  if (end < start) return [];
+  const out = [];
+  const seen = new Set();
+  const holidayMapByYear = new Map();
+  for (const d of dateRange(start, end)) {
+    const year = d.getFullYear();
+    if (!holidayMapByYear.has(year)) holidayMapByYear.set(year, getBankHolidayNameMap(year));
+    const iso = formatDate(d);
+    const name = holidayMapByYear.get(year).get(iso);
+    if (name && !seen.has(name)) {
+      seen.add(name);
+      out.push(name);
+    }
+  }
+  return out;
 }
 
 function businessDaysOffWork(startDateText, endDateText, startHalf = "am", endHalf = "pm") {
@@ -556,9 +635,10 @@ function renderHolidayHeatmap() {
 }
 
 function renderHolidayTable() {
-  const rowsForYear = holidaysForYear(state.year);
+  const rowsForYear = holidaysForYear(state.year)
+    .filter((h) => !state.hideCompleted || displayStatus(h) !== "completed");
   if (!rowsForYear.length) {
-    el.holidayTable.innerHTML = `<p>No holidays added for <strong>${state.year}</strong> yet.</p>`;
+    el.holidayTable.innerHTML = `<p>No holidays to show for <strong>${state.year}</strong>.</p>`;
     return;
   }
 
@@ -583,14 +663,23 @@ function renderHolidayTable() {
       const statusLabel = displayStatus(h);
       const pastClass = statusLabel === "completed" ? "past-trip-row" : "";
       const tripLength = tripLengthDays(h);
+      const startDisplay = formatDayMonth(h.startDate);
+      const endDisplay = formatDayMonth(h.endDate);
+      const isSingleDayTrip = h.startDate === h.endDate;
+      const daysOffWork = Number(h.daysOffWork || 0);
+      const bankHolidayNames = daysOffWork === 0 ? bankHolidayNamesInRange(h.startDate, h.endDate) : [];
+      const bankHolidayNote = bankHolidayNames.length ? ` <span class="trip-bank-holidays">(${bankHolidayNames.join(", ")})</span>` : "";
+      const mobileDateMarkup = isSingleDayTrip
+        ? `<span>${startDisplay}</span>${bankHolidayNote}`
+        : `<span>${startDisplay}</span><span>to</span><span>${endDisplay}</span>${bankHolidayNote}`;
 
       return `
       <tr class="${pastClass}">
         <td>${h.location}</td>
         <td>${h.country || "-"}</td>
-        <td>${h.startDate}</td>
-        <td>${h.endDate}</td>
-        <td>${h.daysOffWork}</td>
+        <td>${startDisplay}</td>
+        <td>${endDisplay}</td>
+        <td>${daysOffWork}</td>
         <td>${tripLength}</td>
         <td><span class="tag status-${statusLabel}">${statusLabel}</span></td>
         <td>${benDays || "-"}</td>
@@ -601,7 +690,10 @@ function renderHolidayTable() {
         <td colspan="10">
           <div class="trip-mobile-card">
             <div class="trip-mobile-row trip-mobile-title">
-              <strong>${h.location}</strong> · ${h.country || "-"} · ${h.startDate} to ${h.endDate}
+              <strong>${h.location}</strong>
+            </div>
+            <div class="trip-mobile-row trip-mobile-dates">
+              ${mobileDateMarkup}
             </div>
             <div class="trip-mobile-row trip-mobile-meta">
               <span>Days off: <strong>${h.daysOffWork}</strong></span>
@@ -651,6 +743,7 @@ function renderHolidayTable() {
 function buildHolidayDayIndex(year) {
   const idx = new Map();
   for (const h of state.holidays) {
+    if (state.hideCompleted && displayStatus(h) === "completed") continue;
     const start = parseDate(h.startDate);
     const end = parseDate(h.endDate);
     if (start.getFullYear() !== year && end.getFullYear() !== year) continue;
@@ -680,6 +773,19 @@ function renderCalendar() {
   const holidayIdx = buildHolidayDayIndex(year);
 
   for (let month = 0; month < 12; month++) {
+    if (state.hideCompleted) {
+      const daysInMonthCheck = new Date(year, month + 1, 0).getDate();
+      let hasVisibleTripInMonth = false;
+      for (let dayCheck = 1; dayCheck <= daysInMonthCheck; dayCheck++) {
+        const isoCheck = formatDate(new Date(year, month, dayCheck));
+        if (holidayIdx.has(isoCheck)) {
+          hasVisibleTripInMonth = true;
+          break;
+        }
+      }
+      if (!hasVisibleTripInMonth) continue;
+    }
+
     const frag = el.monthTemplate.content.cloneNode(true);
     frag.querySelector("h4").textContent = monthName(month);
     const daysGrid = frag.querySelector(".days-grid");
@@ -777,10 +883,22 @@ function renderCalendar() {
 }
 
 function render() {
+  if (el.hideCompleted) el.hideCompleted.checked = state.hideCompleted;
+  renderYearSelect();
   renderPeopleSummary();
   renderHolidayHeatmap();
   renderHolidayTable();
   renderCalendar();
+}
+
+function renderYearSelect() {
+  if (!el.yearSelect) return;
+  const years = [];
+  for (let year = YEAR_MIN; year <= YEAR_MAX; year += 1) years.push(year);
+  el.yearSelect.innerHTML = years
+    .map((year) => `<option value="${year}" ${year === state.year ? "selected" : ""}>${year}</option>`)
+    .join("");
+  el.yearSelect.value = String(state.year);
 }
 
 function toggleView(view) {
@@ -824,7 +942,7 @@ function renderBankHolidayList() {
     .sort((a, b) => a.holidayDate.localeCompare(b.holidayDate))
     .map((h) => `
       <tr>
-        <td>${h.holidayDate}</td>
+        <td>${formatDayMonth(h.holidayDate)}</td>
         <td>${h.name}</td>
         <td><button type="button" class="delete-bank-holiday" data-id="${h.id}">Delete</button></td>
       </tr>`)
@@ -915,8 +1033,10 @@ async function upsertPerson(name, standard, additional) {
   if (insertRes.error) throw insertRes.error;
 }
 
-async function changeYear(delta) {
-  state.year += delta;
+async function setYear(year) {
+  const nextYear = Number(year);
+  if (!Number.isInteger(nextYear) || nextYear === state.year) return;
+  state.year = nextYear;
   await loadData();
   render();
 }
@@ -1303,8 +1423,15 @@ if (el.removeHoliday) el.removeHoliday.addEventListener("click", async () => {
 
 if (el.tableTab) el.tableTab.addEventListener("click", () => toggleView("table"));
 if (el.calendarTab) el.calendarTab.addEventListener("click", () => toggleView("calendar"));
-if (el.prevYear) el.prevYear.addEventListener("click", async () => { await changeYear(-1); renderBankHolidayList(); });
-if (el.nextYear) el.nextYear.addEventListener("click", async () => { await changeYear(1); renderBankHolidayList(); });
+if (el.hideCompleted) el.hideCompleted.addEventListener("change", (e) => {
+  state.hideCompleted = Boolean(e.target.checked);
+  writeHideCompletedPref(state.hideCompleted);
+  render();
+});
+if (el.yearSelect) el.yearSelect.addEventListener("change", async (e) => {
+  await setYear(e.target.value);
+  renderBankHolidayList();
+});
 
 (async function init() {
   populateCountrySelect(el.addCountry, "United Kingdom");

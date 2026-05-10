@@ -23,8 +23,8 @@
       <section class="panel">
         <div class="calendar-controls top-year-controls">
           <div class="year-nav">
-            <button id="prev-year" type="button">Previous</button>
-            <button id="next-year" type="button">Next</button>
+            <label for="year-select" class="year-select-label">Year</label>
+            <select id="year-select" aria-label="Select year"></select>
           </div>
           <h3 id="planner-year"></h3>
           <div>
@@ -44,7 +44,13 @@
 
       <section class="panel" aria-labelledby="views-heading">
         <div class="panel-head">
-          <h2 id="views-heading">Planner View</h2>
+          <div class="planner-heading">
+            <h2 id="views-heading">Planner View</h2>
+            <label class="hide-completed-toggle" for="hide-completed">
+              <input id="hide-completed" type="checkbox" />
+              Hide completed
+            </label>
+          </div>
           <div class="toggle" role="tablist" aria-label="View toggle">
             <button id="table-tab" class="active" data-view="table" role="tab" aria-selected="true">Table</button>
             <button id="calendar-tab" data-view="calendar" role="tab" aria-selected="false">Calendar</button>
