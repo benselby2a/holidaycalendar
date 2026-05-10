@@ -1,6 +1,7 @@
 :root {
   --bg: #f6f3ea;
   --bg-2: #efe9da;
+  --paper: #fbf8ef;
   --ink: #111111;
   --muted: #4f4f4f;
   --line: #111111;
@@ -23,7 +24,10 @@ body {
   margin: 0;
   font-family: "Space Grotesk", sans-serif;
   color: var(--ink);
-  background: linear-gradient(140deg, #fffef8 0%, var(--bg) 100%);
+  background:
+    radial-gradient(circle at 16% 18%, rgba(255, 212, 0, 0.12) 0 110px, transparent 110px),
+    radial-gradient(circle at 84% 82%, rgba(0, 87, 184, 0.1) 0 120px, transparent 120px),
+    linear-gradient(140deg, #fffef8 0%, var(--bg) 100%);
 }
 
 .backdrop {
@@ -44,14 +48,32 @@ body {
   position: relative;
 }
 
-.hero > div {
-  margin-bottom: 8px;
+.hero {
+  position: relative;
+  padding: 10px 12px 12px;
+  border: 3px solid #111;
+  background: var(--paper);
+  box-shadow: none;
+}
+
+.hero::before,
+.hero::after {
+  content: none;
+}
+
+.hero::before {
+  display: none;
+}
+
+.hero::after {
+  display: none;
 }
 
 .hero h1 {
   margin: 0;
   font-family: "Fraunces", serif;
   font-size: clamp(2rem, 4vw, 3rem);
+  line-height: 1.08;
 }
 
 .kicker {
@@ -68,13 +90,72 @@ body {
   margin-top: 0.5rem;
 }
 
+.next-big-holiday-hero {
+  margin: 10px 0 0;
+  border: 3px solid #111;
+  background:
+    linear-gradient(90deg, rgba(225, 6, 0, 0.08) 0 26%, transparent 26% 100%),
+    linear-gradient(180deg, #fff6cf 0%, #ffe79a 100%);
+  padding: 8px 10px;
+  display: grid;
+  gap: 2px;
+  width: 100%;
+  justify-items: center;
+  text-align: center;
+  box-shadow: none;
+}
+
+.utility-actions {
+  margin-top: 14px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.secondary-utility-btn {
+  min-height: 30px;
+  padding: 4px 10px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  background: #f7f7f7;
+  color: #222;
+  border: 2px solid #111;
+  box-shadow: none;
+}
+
+.countdown-label {
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #5b4a1a;
+}
+
+.countdown-destination {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #111;
+}
+
+.countdown-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #0039a6;
+}
+
 .panel {
   margin-top: 18px;
   border: 3px solid var(--line);
-  background: var(--panel);
+  background:
+    linear-gradient(0deg, rgba(255, 255, 255, 0.65), rgba(255, 255, 255, 0.65)),
+    var(--panel);
   border-radius: 4px;
   padding: 14px;
-  box-shadow: 8px 8px 0 rgba(0, 0, 0, 0.18);
+  box-shadow: none;
+  position: relative;
+}
+
+.panel::before {
+  content: none;
 }
 
 .panel-head {
@@ -151,6 +232,12 @@ input, select {
   border: 2px solid var(--line);
   border-radius: 2px;
   background: #fff;
+  min-height: 44px;
+}
+
+input[readonly] {
+  background: #ececec;
+  color: #222;
 }
 
 /* Hide up/down number steppers for readonly calculated fields */
@@ -167,7 +254,7 @@ input[readonly][type="number"]::-webkit-inner-spin-button {
 
 button {
   border: 2px solid #111;
-  background: var(--accent);
+  background: linear-gradient(180deg, #0a52c7 0%, #0039a6 100%);
   color: #fff;
   border-radius: 2px;
   min-height: 44px;
@@ -175,10 +262,10 @@ button {
   cursor: pointer;
   font-weight: 700;
   letter-spacing: 0.01em;
-  box-shadow: 3px 3px 0 rgba(0, 0, 0, 0.28);
+  box-shadow: none;
 }
 
-button:hover { transform: translate(-1px, -1px); }
+button:hover { transform: translate(-1px, -1px); filter: saturate(1.08); }
 
 .full-width { grid-column: 1 / -1; }
 
@@ -203,6 +290,7 @@ button:hover { transform: translate(-1px, -1px); }
   overflow: hidden;
   width: 100%;
   max-width: 180px;
+  min-height: 44px;
   background: #fff;
 }
 
@@ -219,7 +307,9 @@ button:hover { transform: translate(-1px, -1px); }
 .half-toggle span {
   display: block;
   text-align: center;
-  padding: 8px 10px;
+  min-height: 40px;
+  line-height: 40px;
+  padding: 0 10px;
   border-right: 2px solid #111;
   font-weight: 700;
   background: #fff;
@@ -235,6 +325,66 @@ button:hover { transform: translate(-1px, -1px); }
   background: var(--yellow);
 }
 
+.tri-toggle {
+  display: inline-grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
+  border: 2px solid #111;
+  border-radius: 2px;
+  overflow: hidden;
+  width: 100%;
+  max-width: 100%;
+  min-height: 44px;
+  background: #fff;
+}
+
+.tri-toggle label {
+  margin: 0;
+}
+
+.tri-toggle input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.tri-toggle span {
+  display: block;
+  text-align: center;
+  min-height: 40px;
+  line-height: 40px;
+  padding: 0 5px;
+  border-right: 2px solid #111;
+  font-weight: 700;
+  background: #fff;
+  color: #111;
+  cursor: pointer;
+  font-size: 0.76rem;
+  white-space: nowrap;
+}
+
+.tri-toggle label:last-child span {
+  border-right: 0;
+}
+
+.tri-toggle input:checked + span {
+  background: var(--yellow);
+}
+
+.tri-toggle label:has(input[value="planning"]:checked) span {
+  background: #fff27d;
+  color: #111;
+}
+
+.tri-toggle label:has(input[value="booked"]:checked) span {
+  background: #baf0b2;
+  color: #111;
+}
+
+.tri-toggle label:has(input[value="happened"]:checked) span {
+  background: #cfe2ff;
+  color: #0b3d91;
+}
+
 .toggle {
   display: flex;
   gap: 8px;
@@ -246,9 +396,9 @@ button:hover { transform: translate(-1px, -1px); }
 }
 
 .toggle button.active {
-  background: var(--yellow);
+  background: linear-gradient(180deg, #ffe04d 0%, var(--yellow) 100%);
   border-color: #111;
-  color: white;
+  color: #111;
 }
 
 #holiday-table,
@@ -260,6 +410,43 @@ button:hover { transform: translate(-1px, -1px); }
 }
 
 .hidden { display: none; }
+
+.status-toast {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  min-width: 260px;
+  max-width: min(92vw, 640px);
+  padding: 10px 14px;
+  border: 2px solid #111;
+  box-shadow: none;
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+
+.status-toast.success {
+  background: #fff27d;
+  color: #111;
+}
+
+.status-toast.error {
+  background: #ffe3e3;
+  color: #7f0000;
+  border-color: #b30000;
+}
+
+.allowance-warning {
+  grid-column: 1 / -1;
+  margin-top: 4px;
+  border: 2px solid #b30000;
+  background: #ffe3e3;
+  color: #7f0000;
+  padding: 8px 10px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
 
 .modal {
   position: fixed;
@@ -284,7 +471,7 @@ button:hover { transform: translate(-1px, -1px); }
   border: 3px solid var(--line);
   border-radius: 4px;
   padding: 14px;
-  box-shadow: 10px 10px 0 rgba(0, 0, 0, 0.28);
+  box-shadow: none;
 }
 
 table {
@@ -335,6 +522,35 @@ tr:hover { background: #fff7db; }
   gap: 6px;
   font-size: 0.85rem;
   color: #2f2f2f;
+}
+
+.trip-mobile-people {
+  justify-content: flex-start;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: nowrap;
+}
+
+.trip-mobile-edit {
+  min-height: 32px;
+  padding: 4px 10px;
+  font-size: 0.8rem;
+  box-shadow: none;
+}
+
+.trip-mobile-status-tag {
+  margin-right: 0;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+}
+
+.trip-mobile-actions-inline {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .trip-bank-holidays {
@@ -569,6 +785,34 @@ tr:hover { background: #fff7db; }
   background: var(--red);
 }
 
+.holiday-todos {
+  margin-top: 12px;
+  border: 2px solid #111;
+  background: #fff9e8;
+  padding: 10px;
+}
+
+.todo-section-title {
+  margin: 0 0 8px;
+  font-size: 0.92rem;
+}
+
+.todo-urgent-subtitle {
+  margin: 0 0 8px;
+  font-size: 0.84rem;
+  font-weight: 700;
+  color: #b30000;
+}
+
+.todo-list {
+  margin: 0;
+  padding-left: 18px;
+}
+
+.todo-list li {
+  margin-bottom: 4px;
+}
+
 .calendar-controls {
   display: flex;
   justify-content: space-between;
@@ -610,6 +854,17 @@ tr:hover { background: #fff7db; }
   min-height: 34px;
   padding: 6px 10px;
   min-width: 110px;
+}
+
+#open-add-holiday {
+  background: linear-gradient(180deg, #ffe04d 0%, var(--yellow) 100%);
+  color: #111;
+  border-color: #111;
+  box-shadow: none;
+}
+
+#open-add-holiday:hover {
+  background: #ffd84d;
 }
 
 .top-year-controls > h3 {
@@ -788,7 +1043,7 @@ tr:hover { background: #fff7db; }
   }
   .panel {
     padding: 10px;
-    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.18);
+    box-shadow: none;
   }
   .calendar-controls {
     flex-direction: column;
@@ -802,6 +1057,16 @@ tr:hover { background: #fff7db; }
   }
   .top-year-controls > div button {
     flex: 1 1 calc(50% - 4px);
+  }
+  #open-add-holiday {
+    flex: 1 1 100%;
+    min-height: 40px;
+    font-size: 0.9rem;
+  }
+  #open-allowance,
+  #open-bank-holidays {
+    min-height: 34px;
+    font-size: 0.8rem;
   }
   .top-year-controls {
     display: flex;
@@ -864,6 +1129,22 @@ tr:hover { background: #fff7db; }
     justify-content: space-between;
   }
   .form-row { grid-template-columns: 1fr; }
+  #holiday-form .halfday-row,
+  #edit-holiday-form .halfday-row {
+    grid-template-columns: minmax(0, 1fr) auto !important;
+    align-items: end;
+    gap: 8px;
+  }
+  #holiday-form .halfday-row .half-toggle,
+  #edit-holiday-form .halfday-row .half-toggle {
+    max-width: none;
+    width: 140px;
+  }
+  #holiday-form .days-summary-row,
+  #edit-holiday-form .days-summary-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 8px;
+  }
   .form-actions-row {
     flex-direction: column-reverse;
     align-items: stretch;
@@ -905,6 +1186,6 @@ tr:hover { background: #fff7db; }
   .modal-card {
     max-height: calc(100vh - 16px);
     padding: 10px;
-    box-shadow: 4px 4px 0 rgba(0, 0, 0, 0.25);
+    box-shadow: none;
   }
 }

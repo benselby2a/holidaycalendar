@@ -13,11 +13,9 @@
     <div class="backdrop"></div>
     <main class="app">
       <header class="hero">
-        <div style="display:flex;justify-content:flex-end;">
-          <button id="open-people" type="button">People Setup</button>
-        </div>
         <p class="kicker">MHP</p>
         <h1>Manatee Holiday Planner 🐳🏖️</h1>
+        <p id="next-big-holiday-hero" class="next-big-holiday-hero"></p>
       </header>
 
       <section class="panel">
@@ -28,6 +26,7 @@
           </div>
           <h3 id="planner-year"></h3>
           <div>
+            <button id="open-add-holiday" type="button">Add Holiday</button>
             <button id="open-allowance" type="button">Year Allowance</button>
             <button id="open-bank-holidays" type="button">Bank Holidays</button>
           </div>
@@ -40,6 +39,7 @@
         </div>
         <div id="allowance-summary"></div>
         <div id="holiday-heatmap"></div>
+        <div id="holiday-todos"></div>
       </section>
 
       <section class="panel" aria-labelledby="views-heading">
@@ -66,72 +66,10 @@
         </div>
       </section>
 
-      <section class="panel" aria-labelledby="holiday-heading">
-        <div class="panel-head">
-          <h2 id="holiday-heading">Add Holiday</h2>
-        </div>
-        <form id="holiday-form" class="grid-form" autocomplete="off" onsubmit="event.preventDefault(); return false;">
-          <div class="form-row">
-            <label>
-              Trip / Location
-              <input type="text" name="location" placeholder="e.g. Athens" required />
-            </label>
-            <label>
-              Country
-              <select name="country" id="add-country" required></select>
-            </label>
-          </div>
-          <div class="form-row">
-            <label>
-              Start date
-              <input type="date" name="startDate" required />
-            </label>
-            <label>
-              Start half day
-              <span class="half-toggle" role="radiogroup" aria-label="Start half day">
-                <label><input type="radio" name="startHalf" value="am" checked required /><span>AM</span></label>
-                <label><input type="radio" name="startHalf" value="pm" required /><span>PM</span></label>
-              </span>
-            </label>
-          </div>
-          <div class="form-row">
-            <label>
-              End date
-              <input type="date" name="endDate" required />
-            </label>
-            <label>
-              End half day
-              <span class="half-toggle" role="radiogroup" aria-label="End half day">
-                <label><input type="radio" name="endHalf" value="am" required /><span>AM</span></label>
-                <label><input type="radio" name="endHalf" value="pm" checked required /><span>PM</span></label>
-              </span>
-            </label>
-          </div>
-          <label>
-            Status
-            <select name="status" required>
-              <option value="planning">Planning</option>
-              <option value="booked">Booked</option>
-              <option value="happened">Happened</option>
-            </select>
-          </label>
-          <label class="full-width">
-            Who is taking this holiday?
-            <div id="people-checkboxes" class="checkbox-wrap"></div>
-          </label>
-          <div class="form-row">
-            <label>
-              Total days
-              <input type="number" name="tripLength" min="0.5" step="0.5" readonly />
-            </label>
-            <label>
-              Days off work
-              <input type="number" name="daysOffWork" min="0" step="0.5" readonly />
-            </label>
-          </div>
-          <button type="submit">Add Holiday</button>
-        </form>
-      </section>
+      <div class="utility-actions">
+        <button id="open-people" class="secondary-utility-btn" type="button">People Setup</button>
+      </div>
+
     </main>
 
     <div id="people-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="people-heading">
@@ -178,6 +116,77 @@
       </div>
     </div>
 
+    <div id="add-holiday-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="holiday-heading">
+      <div class="modal-card">
+        <div class="panel-head">
+          <h2 id="holiday-heading">Add Holiday</h2>
+          <button id="add-holiday-cancel" type="button">Close</button>
+        </div>
+        <form id="holiday-form" class="grid-form" autocomplete="off" onsubmit="event.preventDefault(); return false;">
+          <div class="form-row">
+            <label>
+              Trip / Location
+              <input type="text" name="location" placeholder="e.g. Athens" required />
+            </label>
+            <label>
+              Country
+              <select name="country" id="add-country" required></select>
+            </label>
+          </div>
+          <div class="form-row halfday-row">
+            <label>
+              Start date
+              <input type="date" name="startDate" required />
+            </label>
+            <label>
+              Start half day
+              <span class="half-toggle" role="radiogroup" aria-label="Start half day">
+                <label><input type="radio" name="startHalf" value="am" checked required /><span>AM</span></label>
+                <label><input type="radio" name="startHalf" value="pm" required /><span>PM</span></label>
+              </span>
+            </label>
+          </div>
+          <div class="form-row halfday-row">
+            <label>
+              End date
+              <input type="date" name="endDate" required />
+            </label>
+            <label>
+              End half day
+              <span class="half-toggle" role="radiogroup" aria-label="End half day">
+                <label><input type="radio" name="endHalf" value="am" required /><span>AM</span></label>
+                <label><input type="radio" name="endHalf" value="pm" checked required /><span>PM</span></label>
+              </span>
+            </label>
+          </div>
+          <label>
+            Status
+            <span class="tri-toggle" role="radiogroup" aria-label="Status">
+              <label><input type="radio" name="status" value="planning" checked required /><span>Planning</span></label>
+              <label><input type="radio" name="status" value="booked" required /><span>Booked</span></label>
+              <label><input type="radio" name="status" value="happened" required /><span>Happened</span></label>
+            </span>
+          </label>
+          <label class="full-width">
+            Who is taking this holiday?
+            <div id="people-checkboxes" class="checkbox-wrap"></div>
+          </label>
+          <div class="form-row days-summary-row">
+            <label>
+              Total days
+              <input type="number" name="tripLength" min="0.5" step="0.5" readonly />
+            </label>
+            <label>
+              Days off work
+              <input type="number" name="daysOffWork" min="0" step="0.5" readonly />
+            </label>
+          </div>
+          <div id="holiday-allowance-warning" class="allowance-warning hidden" aria-live="polite"></div>
+          <button type="submit">Add Holiday</button>
+        </form>
+      </div>
+    </div>
+
     <div id="edit-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="edit-holiday-title">
       <div class="modal-card">
         <div class="panel-head">
@@ -196,7 +205,7 @@
               <select name="country" id="edit-country" required></select>
             </label>
           </div>
-          <div class="form-row">
+          <div class="form-row halfday-row">
             <label>
               Start date
               <input type="date" name="startDate" required />
@@ -209,7 +218,7 @@
               </span>
             </label>
           </div>
-          <div class="form-row">
+          <div class="form-row halfday-row">
             <label>
               End date
               <input type="date" name="endDate" required />
@@ -226,7 +235,7 @@
             Who is taking this holiday?
             <div id="edit-people-checkboxes" class="checkbox-wrap"></div>
           </label>
-          <div class="form-row">
+          <div class="form-row days-summary-row">
             <label>
               Total days
               <input type="number" name="tripLength" min="0.5" step="0.5" readonly />
@@ -238,11 +247,11 @@
           </div>
           <label>
             Status
-            <select name="status" required>
-              <option value="planning">Planning</option>
-              <option value="booked">Booked</option>
-              <option value="happened">Happened</option>
-            </select>
+            <span class="tri-toggle" role="radiogroup" aria-label="Edit status">
+              <label><input type="radio" name="status" value="planning" checked required /><span>Planning</span></label>
+              <label><input type="radio" name="status" value="booked" required /><span>Booked</span></label>
+              <label><input type="radio" name="status" value="happened" required /><span>Happened</span></label>
+            </span>
           </label>
           <div class="form-actions-row">
             <button type="button" id="remove-holiday" class="danger">Remove Trip</button>

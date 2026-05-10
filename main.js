@@ -1,6 +1,8 @@
 const SUPABASE_URL = "https://tihctdvsekfanduisaop.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_eOQgde9zeKpa5ld1BH08JQ_irX2xVnb";
 const HIDE_COMPLETED_STORAGE_KEY = "holidayPlanner.hideCompletedTrips";
+const SELECTED_YEAR_STORAGE_KEY = "holidayPlanner.selectedYear";
+let statusToastTimer = null;
 
 let db = null;
 if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
@@ -8,10 +10,26 @@ if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
 }
 
 function defaultPlannerYear() {
-  const now = new Date();
-  const currentYear = now.getFullYear();
-  const isLastMonthOfYear = now.getMonth() === 11;
-  return isLastMonthOfYear ? currentYear + 1 : currentYear;
+  return new Date().getFullYear();
+}
+
+function readSelectedYearPref() {
+  try {
+    const raw = window.localStorage.getItem(SELECTED_YEAR_STORAGE_KEY);
+    if (raw === null || raw.trim() === "") return null;
+    const year = Number(raw);
+    return Number.isInteger(year) ? year : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function writeSelectedYearPref(year) {
+  try {
+    window.localStorage.setItem(SELECTED_YEAR_STORAGE_KEY, String(year));
+  } catch (_) {
+    // Ignore localStorage access issues.
+  }
 }
 
 function readHideCompletedPref() {
@@ -35,7 +53,7 @@ const state = {
   peopleNames: [],
   holidays: [],
   bankHolidays: [],
-  year: defaultPlannerYear(),
+  year: readSelectedYearPref() ?? defaultPlannerYear(),
   hideCompleted: readHideCompletedPref(),
   view: "table",
 };
@@ -72,8 +90,10 @@ const el = {
   peopleModal: document.getElementById("people-modal"),
   peopleCancel: document.getElementById("people-cancel"),
   openPeople: document.getElementById("open-people"),
+  openAddHoliday: document.getElementById("open-add-holiday"),
   personForm: document.getElementById("person-form"),
   holidayForm: document.getElementById("holiday-form"),
+  holidayAllowanceWarning: document.getElementById("holiday-allowance-warning"),
   peopleSummary: document.getElementById("people-summary"),
   allowanceYearLabel: document.getElementById("allowance-year-label"),
   allowancePerson: document.getElementById("allowance-person"),
@@ -81,9 +101,13 @@ const el = {
   addCountry: document.getElementById("add-country"),
   editCountry: document.getElementById("edit-country"),
   holidayHeatmap: document.getElementById("holiday-heatmap"),
+  holidayTodos: document.getElementById("holiday-todos"),
+  nextBigHolidayHero: document.getElementById("next-big-holiday-hero"),
   openAllowance: document.getElementById("open-allowance"),
   allowanceModal: document.getElementById("allowance-modal"),
   allowanceCancel: document.getElementById("allowance-cancel"),
+  addHolidayModal: document.getElementById("add-holiday-modal"),
+  addHolidayCancel: document.getElementById("add-holiday-cancel"),
   editModal: document.getElementById("edit-modal"),
   editHolidayForm: document.getElementById("edit-holiday-form"),
   removeHoliday: document.getElementById("remove-holiday"),
@@ -108,16 +132,25 @@ const el = {
 };
 
 function setStatusMessage(message, isError = false) {
-  let node = document.getElementById("status-message");
+  let node = document.getElementById("status-toast");
   if (!node) {
-    node = document.createElement("p");
-    node.id = "status-message";
-    node.style.marginTop = "10px";
-    node.style.fontSize = "0.9rem";
-    document.querySelector(".hero").appendChild(node);
+    node = document.createElement("div");
+    node.id = "status-toast";
+    node.className = "status-toast hidden";
+    document.body.appendChild(node);
   }
-  node.style.color = isError ? "#a33a2b" : "#2d8f5d";
+
+  if (statusToastTimer) {
+    clearTimeout(statusToastTimer);
+    statusToastTimer = null;
+  }
+
+  node.classList.remove("hidden", "error", "success");
+  node.classList.add(isError ? "error" : "success");
   node.textContent = message;
+  statusToastTimer = window.setTimeout(() => {
+    node.classList.add("hidden");
+  }, isError ? 4500 : 3000);
 }
 
 function populateCountrySelect(selectEl, selected = "United Kingdom") {
@@ -125,6 +158,16 @@ function populateCountrySelect(selectEl, selected = "United Kingdom") {
   selectEl.innerHTML = RECOGNIZED_COUNTRIES
     .map((country) => `<option value="${country}" ${country === selected ? "selected" : ""}>${country}</option>`)
     .join("");
+}
+
+function inferCountryFromLocation(locationText) {
+  const text = String(locationText || "").trim().toLowerCase();
+  if (!text) return null;
+  for (const country of RECOGNIZED_COUNTRIES) {
+    const countryLc = country.toLowerCase();
+    if (text.includes(countryLc) || countryLc.includes(text)) return country;
+  }
+  return null;
 }
 
 window.addEventListener("error", (evt) => {
@@ -170,6 +213,15 @@ function todayIsoLocal() {
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
+}
+
+function setHolidayFormStatusDefault() {
+  if (!el.holidayForm || !el.holidayForm.elements.status) return;
+  const statusManual = el.holidayForm.dataset.statusManual === "true";
+  if (statusManual) return;
+  const endDate = String(el.holidayForm.elements.endDate?.value || "");
+  if (!endDate) return;
+  el.holidayForm.elements.status.value = endDate < todayIsoLocal() ? "happened" : "planning";
 }
 
 function addDays(date, days) {
@@ -331,6 +383,15 @@ function bankHolidayNamesInRange(startDateText, endDateText) {
     }
   }
   return out;
+}
+
+function getNextBigHoliday() {
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return state.holidays
+    .filter((h) => parseDate(h.startDate) >= today)
+    .filter((h) => tripLengthDays(h) > 7)
+    .sort((a, b) => a.startDate.localeCompare(b.startDate))[0] || null;
 }
 
 function businessDaysOffWork(startDateText, endDateText, startHalf = "am", endHalf = "pm") {
@@ -567,6 +628,37 @@ function syncAllowanceEditorFromSelection() {
   if (el.personForm.elements.additional) el.personForm.elements.additional.value = String(additional);
 }
 
+function updateHolidayAllowanceWarning() {
+  if (!el.holidayForm || !el.holidayAllowanceWarning) return;
+  const daysOffWorkRaw = Number(el.holidayForm.elements.daysOffWork?.value || 0);
+  const daysOffWork = Number.isFinite(daysOffWorkRaw) ? daysOffWorkRaw : 0;
+  const selectedPeople = Array.from(el.holidayForm.querySelectorAll('input[name="person"]:checked')).map((n) => n.value);
+  if (!selectedPeople.length || daysOffWork <= 0) {
+    el.holidayAllowanceWarning.classList.add("hidden");
+    el.holidayAllowanceWarning.textContent = "";
+    return;
+  }
+
+  const allowanceByName = new Map(state.people.map((p) => [p.name, Number(p.standard || 0) + Number(p.additional || 0)]));
+  const breaches = [];
+  for (const name of selectedPeople) {
+    const totalAllowance = Number(allowanceByName.get(name) || 0);
+    const alreadyPlanned = Number(holidayDaysForPerson(name) || 0);
+    const projected = alreadyPlanned + daysOffWork;
+    const overBy = Number((projected - totalAllowance).toFixed(2));
+    if (overBy > 0) breaches.push(`${name} (+${overBy})`);
+  }
+
+  if (!breaches.length) {
+    el.holidayAllowanceWarning.classList.add("hidden");
+    el.holidayAllowanceWarning.textContent = "";
+    return;
+  }
+
+  el.holidayAllowanceWarning.textContent = `Allowance warning: ${breaches.join(", ")} would exceed available allowance.`;
+  el.holidayAllowanceWarning.classList.remove("hidden");
+}
+
 function renderHolidayHeatmap() {
   if (!el.holidayHeatmap) return;
   const year = state.year;
@@ -634,6 +726,66 @@ function renderHolidayHeatmap() {
   `;
 }
 
+function renderHolidayTodos() {
+  if (!el.holidayTodos) return;
+  const rowsForYear = holidaysForYear(state.year);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const twoMonthsOut = new Date(today.getFullYear(), today.getMonth() + 2, today.getDate());
+  const sixMonthsOut = new Date(today.getFullYear(), today.getMonth() + 6, today.getDate());
+  const plannedNotBooked = rowsForYear
+    .filter((h) => {
+      const status = String(displayStatus(h)).toLowerCase();
+      if (status !== "planning") return false;
+      const start = parseDate(h.startDate);
+      return start >= today && start <= sixMonthsOut;
+    })
+    .sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+  if (!plannedNotBooked.length) {
+    el.holidayTodos.innerHTML = "";
+    return;
+  }
+
+  const todoMarkup = `<ul class="todo-list">
+      ${plannedNotBooked.map((h) => {
+        const isUrgent = parseDate(h.startDate) <= twoMonthsOut;
+        const urgentMarkup = isUrgent ? ' <span class="todo-urgent-subtitle">Potential Manatee Holiday Chaos!</span>' : "";
+        return `<li><strong>${h.location}</strong>: ${formatDayMonth(h.startDate)}${h.startDate === h.endDate ? "" : ` to ${formatDayMonth(h.endDate)}`}${urgentMarkup}</li>`;
+      }).join("")}
+    </ul>`;
+
+  el.holidayTodos.innerHTML = `
+    <div class="holiday-todos">
+      <p class="todo-section-title"><strong>To Do</strong> - planned but not booked (${plannedNotBooked.length})</p>
+      ${todoMarkup}
+    </div>
+  `;
+}
+
+function renderNextBigHolidayHero() {
+  if (!el.nextBigHolidayHero) return;
+  const nextBigHoliday = getNextBigHoliday();
+  if (!nextBigHoliday) {
+    el.nextBigHolidayHero.innerHTML = `
+      <span class="countdown-label">Next Big Holiday Countdown</span>
+      <span class="countdown-value">No upcoming big holiday found</span>
+    `;
+    return;
+  }
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const start = parseDate(nextBigHoliday.startDate);
+  const msPerDay = 1000 * 60 * 60 * 24;
+  const daysUntil = Math.round((start - today) / msPerDay);
+  const countdownText = daysUntil === 0 ? "Starts today" : `${daysUntil} day${daysUntil === 1 ? "" : "s"} to go`;
+  el.nextBigHolidayHero.innerHTML = `
+    <span class="countdown-label">Next Big Holiday Countdown</span>
+    <span class="countdown-destination">${nextBigHoliday.location}</span>
+    <span class="countdown-value">${countdownText}</span>
+  `;
+}
+
 function renderHolidayTable() {
   const rowsForYear = holidaysForYear(state.year)
     .filter((h) => !state.hideCompleted || displayStatus(h) !== "completed");
@@ -668,20 +820,24 @@ function renderHolidayTable() {
       const isSingleDayTrip = h.startDate === h.endDate;
       const daysOffWork = Number(h.daysOffWork || 0);
       const bankHolidayNames = daysOffWork === 0 ? bankHolidayNamesInRange(h.startDate, h.endDate) : [];
-      const bankHolidayNote = bankHolidayNames.length ? ` <span class="trip-bank-holidays">(${bankHolidayNames.join(", ")})</span>` : "";
+      const lengthLabel = `${tripLength} day${tripLength === 1 ? "" : "s"}`;
+      const durationMeta = bankHolidayNames.length
+        ? `${lengthLabel}, ${bankHolidayNames.join(", ")}`
+        : lengthLabel;
       const mobileDateMarkup = isSingleDayTrip
-        ? `<span>${startDisplay}</span>${bankHolidayNote}`
-        : `<span>${startDisplay}</span><span>to</span><span>${endDisplay}</span>${bankHolidayNote}`;
+        ? `<span>${startDisplay}</span><span>(${durationMeta})</span>`
+        : `<span>${startDisplay}</span><span>to</span><span>${endDisplay}</span><span>(${durationMeta})</span>`;
+      const showIndividualPeopleDays = benDays !== louiseDays;
 
       return `
       <tr class="${pastClass}">
         <td>${h.location}</td>
+        <td><span class="tag status-${statusLabel}">${statusLabel}</span></td>
         <td>${h.country || "-"}</td>
         <td>${startDisplay}</td>
         <td>${endDisplay}</td>
         <td>${daysOffWork}</td>
         <td>${tripLength}</td>
-        <td><span class="tag status-${statusLabel}">${statusLabel}</span></td>
         <td>${benDays || "-"}</td>
         <td>${louiseDays || "-"}</td>
         <td><button type="button" class="edit-trip" data-id="${h.id}">Edit</button></td>
@@ -691,19 +847,17 @@ function renderHolidayTable() {
           <div class="trip-mobile-card">
             <div class="trip-mobile-row trip-mobile-title">
               <strong>${h.location}</strong>
+              <span class="trip-mobile-actions-inline">
+                <span class="tag trip-mobile-status-tag status-${statusLabel}">${statusLabel}</span>
+                <button type="button" class="edit-trip trip-mobile-edit" data-id="${h.id}">Edit</button>
+              </span>
             </div>
             <div class="trip-mobile-row trip-mobile-dates">
               ${mobileDateMarkup}
             </div>
-            <div class="trip-mobile-row trip-mobile-meta">
-              <span>Days off: <strong>${h.daysOffWork}</strong></span>
-              <span>Length: <strong>${tripLength}</strong></span>
-              <span><span class="tag status-${statusLabel}">${statusLabel}</span></span>
-            </div>
+            ${showIndividualPeopleDays ? "" : `<div class="trip-mobile-row trip-mobile-meta"><span>Days off: <strong>${h.daysOffWork}</strong></span></div>`}
             <div class="trip-mobile-row trip-mobile-people">
-              <span>Ben: <strong>${benDays || "-"}</strong></span>
-              <span>Louise: <strong>${louiseDays || "-"}</strong></span>
-              <button type="button" class="edit-trip" data-id="${h.id}">Edit</button>
+              ${showIndividualPeopleDays ? `<span>Ben: <strong>${benDays || "-"}</strong></span><span>Louise: <strong>${louiseDays || "-"}</strong></span>` : ""}
             </div>
           </div>
         </td>
@@ -724,12 +878,12 @@ function renderHolidayTable() {
       <thead>
         <tr>
           <th>Trip</th>
+          <th>Status</th>
           <th>Country</th>
           <th>Start</th>
           <th>End</th>
           <th>Days Off Work</th>
           <th>Trip Length</th>
-          <th>Status</th>
           <th>Ben</th>
           <th>Louise</th>
           <th>Actions</th>
@@ -768,22 +922,16 @@ function renderCalendar() {
   if (el.plannerYear) el.plannerYear.textContent = String(year);
   if (!el.calendarGrid) return;
   el.calendarGrid.innerHTML = "";
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
 
   const bankSet = getBankHolidaySet(year);
   const holidayIdx = buildHolidayDayIndex(year);
 
   for (let month = 0; month < 12; month++) {
     if (state.hideCompleted) {
-      const daysInMonthCheck = new Date(year, month + 1, 0).getDate();
-      let hasVisibleTripInMonth = false;
-      for (let dayCheck = 1; dayCheck <= daysInMonthCheck; dayCheck++) {
-        const isoCheck = formatDate(new Date(year, month, dayCheck));
-        if (holidayIdx.has(isoCheck)) {
-          hasVisibleTripInMonth = true;
-          break;
-        }
-      }
-      if (!hasVisibleTripInMonth) continue;
+      const monthEnd = new Date(year, month + 1, 0);
+      if (monthEnd < today) continue;
     }
 
     const frag = el.monthTemplate.content.cloneNode(true);
@@ -885,8 +1033,10 @@ function renderCalendar() {
 function render() {
   if (el.hideCompleted) el.hideCompleted.checked = state.hideCompleted;
   renderYearSelect();
+  renderNextBigHolidayHero();
   renderPeopleSummary();
   renderHolidayHeatmap();
+  renderHolidayTodos();
   renderHolidayTable();
   renderCalendar();
 }
@@ -922,6 +1072,49 @@ function openAllowanceModal() {
 function closeAllowanceModal() {
   if (!el.allowanceModal) return;
   el.allowanceModal.classList.add("hidden");
+}
+
+function openAddHolidayModal() {
+  if (!el.addHolidayModal) return;
+  if (el.holidayForm) {
+    el.holidayForm.dataset.endDateManual = "false";
+    el.holidayForm.dataset.countryManual = "false";
+    el.holidayForm.dataset.statusManual = "false";
+    const currentYear = new Date().getFullYear();
+    if (state.year > currentYear) {
+      const midYearIso = `${state.year}-07-01`;
+      if (el.holidayForm.elements.startDate) el.holidayForm.elements.startDate.value = midYearIso;
+      if (el.holidayForm.elements.endDate) el.holidayForm.elements.endDate.value = midYearIso;
+      const startHalf = el.holidayForm.elements.startHalf?.value || "am";
+      const endHalf = el.holidayForm.elements.endHalf?.value || "pm";
+      if (el.holidayForm.elements.tripLength) {
+        el.holidayForm.elements.tripLength.value = String(calcTripLength(midYearIso, midYearIso, startHalf, endHalf));
+      }
+      if (el.holidayForm.elements.daysOffWork) {
+        el.holidayForm.elements.daysOffWork.value = String(businessDaysOffWork(midYearIso, midYearIso, startHalf, endHalf));
+      }
+    }
+    setHolidayFormStatusDefault();
+  }
+  el.addHolidayModal.classList.remove("hidden");
+}
+
+function closeAddHolidayModal() {
+  if (!el.addHolidayModal) return;
+  if (el.holidayForm && typeof el.holidayForm.reset === "function") {
+    el.holidayForm.reset();
+    el.holidayForm.dataset.endDateManual = "false";
+    el.holidayForm.dataset.countryManual = "false";
+    el.holidayForm.dataset.statusManual = "false";
+    if (el.holidayForm.elements.tripLength) el.holidayForm.elements.tripLength.value = "";
+    if (el.holidayForm.elements.daysOffWork) el.holidayForm.elements.daysOffWork.value = "";
+    if (el.addCountry) el.addCountry.value = "United Kingdom";
+  }
+  if (el.holidayAllowanceWarning) {
+    el.holidayAllowanceWarning.textContent = "";
+    el.holidayAllowanceWarning.classList.add("hidden");
+  }
+  el.addHolidayModal.classList.add("hidden");
 }
 
 function openPeopleModal() {
@@ -1037,6 +1230,7 @@ async function setYear(year) {
   const nextYear = Number(year);
   if (!Number.isInteger(nextYear) || nextYear === state.year) return;
   state.year = nextYear;
+  writeSelectedYearPref(nextYear);
   await loadData();
   render();
 }
@@ -1191,6 +1385,9 @@ if (el.holidayForm) el.holidayForm.addEventListener("submit", async (e) => {
     render();
     if (formEl && typeof formEl.reset === "function") formEl.reset();
     formEl.dataset.endDateManual = "false";
+    formEl.dataset.countryManual = "false";
+    formEl.dataset.statusManual = "false";
+    closeAddHolidayModal();
     setStatusMessage(`Saved holiday: ${location}.`);
   } catch (err) {
     const reason = err?.message || "Unknown error";
@@ -1207,9 +1404,11 @@ if (el.holidayTable) el.holidayTable.addEventListener("click", (e) => {
 
 if (el.editCancel) el.editCancel.addEventListener("click", () => closeEditHolidayModal());
 if (el.openPeople) el.openPeople.addEventListener("click", () => openPeopleModal());
+if (el.openAddHoliday) el.openAddHoliday.addEventListener("click", () => openAddHolidayModal());
 if (el.peopleCancel) el.peopleCancel.addEventListener("click", () => closePeopleModal());
 if (el.openAllowance) el.openAllowance.addEventListener("click", () => openAllowanceModal());
 if (el.allowanceCancel) el.allowanceCancel.addEventListener("click", () => closeAllowanceModal());
+if (el.addHolidayCancel) el.addHolidayCancel.addEventListener("click", () => closeAddHolidayModal());
 if (el.openBankHolidays) el.openBankHolidays.addEventListener("click", () => openBankHolidaysModal());
 if (el.bankHolidaysCancel) el.bankHolidaysCancel.addEventListener("click", () => closeBankHolidaysModal());
 
@@ -1285,6 +1484,8 @@ if (el.peopleList) el.peopleList.addEventListener("click", async (e) => {
 
 if (el.holidayForm) {
   el.holidayForm.dataset.endDateManual = "false";
+  el.holidayForm.dataset.countryManual = "false";
+  el.holidayForm.dataset.statusManual = "false";
   const syncAddForm = () => {
     const start = el.holidayForm.elements.startDate.value;
     const end = el.holidayForm.elements.endDate.value;
@@ -1299,6 +1500,7 @@ if (el.holidayForm) {
       el.holidayForm.elements.tripLength.value = "";
       el.holidayForm.elements.daysOffWork.value = "";
     }
+    updateHolidayAllowanceWarning();
   };
   el.holidayForm.elements.startDate.addEventListener("change", () => {
     const endManual = el.holidayForm.dataset.endDateManual === "true";
@@ -1311,6 +1513,35 @@ if (el.holidayForm) {
     const end = el.holidayForm.elements.endDate.value;
     el.holidayForm.dataset.endDateManual = end ? "true" : "false";
     syncAddForm();
+    setHolidayFormStatusDefault();
+  });
+  if (el.holidayForm.elements.status) {
+    for (const node of el.holidayForm.querySelectorAll('input[name="status"]')) {
+      node.addEventListener("change", () => {
+        el.holidayForm.dataset.statusManual = "true";
+      });
+    }
+  }
+  if (el.holidayForm.elements.country) {
+    el.holidayForm.elements.country.addEventListener("change", () => {
+      el.holidayForm.dataset.countryManual = "true";
+    });
+  }
+  if (el.holidayForm.elements.location) {
+    el.holidayForm.elements.location.addEventListener("input", () => {
+      const countryManual = el.holidayForm.dataset.countryManual === "true";
+      if (countryManual) return;
+      const inferred = inferCountryFromLocation(el.holidayForm.elements.location.value);
+      if (inferred && el.holidayForm.elements.country) {
+        el.holidayForm.elements.country.value = inferred;
+      }
+    });
+  }
+  el.holidayForm.addEventListener("change", (evt) => {
+    const target = evt.target;
+    if (target && target.matches('input[name="person"]')) {
+      updateHolidayAllowanceWarning();
+    }
   });
   for (const node of el.holidayForm.querySelectorAll('input[name="startHalf"], input[name="endHalf"]')) {
     node.addEventListener("change", () => syncAddForm());
