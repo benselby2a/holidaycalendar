@@ -1,12 +1,14 @@
-const SUPABASE_URL = "https://tihctdvsekfanduisaop.supabase.co";
-const SUPABASE_ANON_KEY = "sb_publishable_eOQgde9zeKpa5ld1BH08JQ_irX2xVnb";
+const SUPABASE_URL = "https://cnkznpkvwoqxaiywwmhr.supabase.co";
+const SUPABASE_ANON_KEY = "sb_publishable_xlNQ_QudJNUlMLjWpr0iJA_YgO87tox";
 const HIDE_COMPLETED_STORAGE_KEY = "holidayPlanner.hideCompletedTrips";
 const SELECTED_YEAR_STORAGE_KEY = "holidayPlanner.selectedYear";
 let statusToastTimer = null;
 
 let db = null;
 if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
-  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+  db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    db: { schema: "holidaycalendar" },
+  });
 }
 
 function defaultPlannerYear() {
