@@ -56,6 +56,7 @@ body {
 }
 [data-hub] .auth-gate { display: none !important; }
 [data-hub] .app.hidden { display: block !important; }
+[data-hub] .hub-hide { display: none !important; }
 
 .backdrop {
   position: fixed;

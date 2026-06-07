@@ -1678,6 +1678,27 @@ function setAuthedUI(authed) {
   if (app) app.classList.toggle("hidden", !authed);
 }
 
+function showUserInfo(session) {
+  const userEmailEl = document.getElementById("user-email");
+  if (userEmailEl) {
+    userEmailEl.textContent = session?.user?.email || "";
+  }
+}
+
+// Sign-out — wired unconditionally so it works even if db init has issues
+document.getElementById("sign-out-btn")?.addEventListener("click", async () => {
+  if (db) {
+    await db.auth.signOut();
+  }
+  // Clear Supabase localStorage keys as fallback
+  Object.keys(localStorage).forEach(k => {
+    if (k.startsWith("sb-")) localStorage.removeItem(k);
+  });
+  setAuthedUI(false);
+  showUserInfo(null);
+  location.reload();
+});
+
 (async function init() {
   if (!db) return;
 
@@ -1699,24 +1720,32 @@ function setAuthedUI(authed) {
   async function loadAppData() {
     if (dataLoaded) return;
     dataLoaded = true;
-    populateCountrySelect(el.addCountry, "United Kingdom");
-    populateCountrySelect(el.editCountry, "United Kingdom");
-    await loadData();
-    render();
+    try {
+      populateCountrySelect(el.addCountry, "United Kingdom");
+      populateCountrySelect(el.editCountry, "United Kingdom");
+      await loadData();
+      render();
+    } catch (err) {
+      console.error("[MHP] loadAppData error:", err);
+    }
   }
 
-  db.auth.onAuthStateChange(async (_event, session) => {
+  db.auth.onAuthStateChange((_event, session) => {
     if (session) {
       setAuthedUI(true);
-      await loadAppData();
+      showUserInfo(session);
+      // Defer to avoid Supabase internal lock in Safari
+      setTimeout(() => loadAppData(), 0);
     } else {
       setAuthedUI(false);
+      showUserInfo(null);
     }
   });
 
   const { data: { session } } = await db.auth.getSession();
   if (session) {
     setAuthedUI(true);
+    showUserInfo(session);
     await loadAppData();
   } else {
     setAuthedUI(false);
