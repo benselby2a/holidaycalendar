@@ -1,12 +1,42 @@
-<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <defs>
-    <linearGradient id='bg' x1='0' y1='0' x2='0' y2='1'>
-      <stop offset='0%' stop-color='#c45e12'/>
-      <stop offset='100%' stop-color='#e8882e'/>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#c45e12"/>
+      <stop offset="100%" stop-color="#e8882e"/>
     </linearGradient>
   </defs>
-  <rect width='512' height='512' rx='96' fill='url(#bg)'/>
-  <circle cx='256' cy='256' r='188' fill='#ffffff20'/>
-  <text x='50%' y='47%' dominant-baseline='middle' text-anchor='middle' font-size='188'>🐳</text>
-  <text x='50%' y='71%' dominant-baseline='middle' text-anchor='middle' font-size='118'>🏖️</text>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="188" fill="#ffffff20"/>
+  <!-- Whale body -->
+  <ellipse cx="250" cy="190" rx="90" ry="55" fill="#4fc3f7"/>
+  <ellipse cx="250" cy="200" rx="75" ry="40" fill="#29b6f6"/>
+  <!-- Whale tail -->
+  <path d="M340 185 Q370 155 365 130 Q355 150 340 160 Q345 145 335 125 Q330 150 320 165" fill="#4fc3f7"/>
+  <!-- Whale eye -->
+  <circle cx="195" cy="180" r="8" fill="#fff"/>
+  <circle cx="197" cy="179" r="4" fill="#1a1a2e"/>
+  <!-- Whale mouth -->
+  <path d="M165 200 Q195 215 230 205" fill="none" stroke="#1565c0" stroke-width="3" stroke-linecap="round"/>
+  <!-- Whale spout -->
+  <path d="M220 140 Q215 120 205 110 M220 140 Q225 118 235 108" fill="none" stroke="#81d4fa" stroke-width="4" stroke-linecap="round"/>
+  <!-- Beach umbrella pole -->
+  <line x1="255" y1="280" x2="255" y2="400" stroke="#8d6e63" stroke-width="5" stroke-linecap="round"/>
+  <!-- Beach umbrella canopy -->
+  <path d="M175 290 Q215 240 255 280 Q295 240 335 290 Z" fill="#ef5350"/>
+  <path d="M215 265 Q235 245 255 280" fill="#e53935"/>
+  <path d="M295 265 Q275 245 255 280" fill="#e53935"/>
+  <!-- Sand -->
+  <ellipse cx="260" cy="400" rx="70" ry="12" fill="#ffd54f"/>
+  <!-- Sun -->
+  <circle cx="350" cy="310" r="22" fill="#fff176"/>
+  <g stroke="#fff176" stroke-width="3" stroke-linecap="round">
+    <line x1="350" y1="280" x2="350" y2="272"/>
+    <line x1="350" y1="340" x2="350" y2="348"/>
+    <line x1="320" y1="310" x2="312" y2="310"/>
+    <line x1="380" y1="310" x2="388" y2="310"/>
+    <line x1="329" y1="289" x2="323" y2="283"/>
+    <line x1="371" y1="331" x2="377" y2="337"/>
+    <line x1="329" y1="331" x2="323" y2="337"/>
+    <line x1="371" y1="289" x2="377" y2="283"/>
+  </g>
 </svg>
