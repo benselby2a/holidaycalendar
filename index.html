@@ -13,8 +13,24 @@
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
+    <div id="auth-gate" class="auth-gate">
+      <div class="auth-card">
+        <h1>🐳🏖️ MHP</h1>
+        <p>Sign in to continue.</p>
+        <form id="sign-in-form">
+          <label>Email
+            <input id="sign-in-email" type="email" placeholder="you@example.com" required />
+          </label>
+          <label>Password
+            <input id="sign-in-password" type="password" placeholder="Password" required minlength="6" />
+          </label>
+          <div id="auth-error" style="color:#ef5350;font-size:0.8rem;margin-top:0.5rem"></div>
+          <button id="sign-in-btn" type="submit">Sign In</button>
+        </form>
+      </div>
+    </div>
     <div class="backdrop"></div>
-    <main class="app">
+    <main class="app hidden" id="app-main">
       <header class="hero">
         <p class="kicker">MHP</p>
         <h1>Manatee Holiday Planner 🐳🏖️</h1>
