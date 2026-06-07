@@ -3,12 +3,17 @@ const SUPABASE_ANON_KEY = "sb_publishable_xlNQ_QudJNUlMLjWpr0iJA_YgO87tox";
 const HIDE_COMPLETED_STORAGE_KEY = "holidayPlanner.hideCompletedTrips";
 const SELECTED_YEAR_STORAGE_KEY = "holidayPlanner.selectedYear";
 let statusToastTimer = null;
+const inHub = window !== window.parent;
 
 let db = null;
 if (window.supabase && SUPABASE_URL && SUPABASE_ANON_KEY) {
   db = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     db: { schema: "holidaycalendar" },
   });
+}
+
+if (inHub) {
+  document.documentElement.setAttribute("data-hub", "");
 }
 
 function defaultPlannerYear() {
@@ -1666,9 +1671,54 @@ if (el.yearSelect) el.yearSelect.addEventListener("change", async (e) => {
   renderBankHolidayList();
 });
 
+function setAuthedUI(authed) {
+  const gate = document.getElementById("auth-gate");
+  const app = document.getElementById("app-main");
+  if (gate) gate.classList.toggle("hidden", authed);
+  if (app) app.classList.toggle("hidden", !authed);
+}
+
 (async function init() {
-  populateCountrySelect(el.addCountry, "United Kingdom");
-  populateCountrySelect(el.editCountry, "United Kingdom");
-  await loadData();
-  render();
+  if (!db) return;
+
+  const signInForm = document.getElementById("sign-in-form");
+  const authError = document.getElementById("auth-error");
+
+  if (signInForm) {
+    signInForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      if (authError) authError.textContent = "";
+      const email = document.getElementById("sign-in-email").value;
+      const password = document.getElementById("sign-in-password").value;
+      const { error } = await db.auth.signInWithPassword({ email, password });
+      if (error && authError) authError.textContent = error.message;
+    });
+  }
+
+  let dataLoaded = false;
+  async function loadAppData() {
+    if (dataLoaded) return;
+    dataLoaded = true;
+    populateCountrySelect(el.addCountry, "United Kingdom");
+    populateCountrySelect(el.editCountry, "United Kingdom");
+    await loadData();
+    render();
+  }
+
+  db.auth.onAuthStateChange(async (_event, session) => {
+    if (session) {
+      setAuthedUI(true);
+      await loadAppData();
+    } else {
+      setAuthedUI(false);
+    }
+  });
+
+  const { data: { session } } = await db.auth.getSession();
+  if (session) {
+    setAuthedUI(true);
+    await loadAppData();
+  } else {
+    setAuthedUI(false);
+  }
 })();

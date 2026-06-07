@@ -30,6 +30,33 @@ body {
     linear-gradient(140deg, #fffef8 0%, var(--bg) 100%);
 }
 
+.auth-gate {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100dvh;
+}
+.auth-gate.hidden { display: none; }
+.auth-card {
+  background: var(--paper);
+  border: 3px solid var(--line);
+  padding: 2rem;
+  max-width: 360px;
+  width: 100%;
+  text-align: center;
+}
+.auth-card h1 { margin-bottom: 0.5rem; }
+.auth-card p { margin-bottom: 1rem; color: var(--muted); font-size: 0.9rem; }
+.auth-card label { display: block; text-align: left; font-size: 0.85rem; margin-bottom: 0.75rem; }
+.auth-card input { width: 100%; padding: 0.45rem; border: 2px solid var(--line); font-family: inherit; font-size: 0.9rem; margin-top: 0.2rem; }
+.auth-card button[type="submit"] {
+  width: 100%; padding: 0.5rem; margin-top: 0.5rem;
+  background: var(--accent); color: #fff; border: none;
+  font-family: inherit; font-size: 0.9rem; font-weight: 600; cursor: pointer;
+}
+[data-hub] .auth-gate { display: none !important; }
+[data-hub] .app.hidden { display: block !important; }
+
 .backdrop {
   position: fixed;
   inset: 0;
