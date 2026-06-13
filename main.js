@@ -2,6 +2,7 @@ const SUPABASE_URL = "https://cnkznpkvwoqxaiywwmhr.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_xlNQ_QudJNUlMLjWpr0iJA_YgO87tox";
 const HIDE_COMPLETED_STORAGE_KEY = "holidayPlanner.hideCompletedTrips";
 const SELECTED_YEAR_STORAGE_KEY = "holidayPlanner.selectedYear";
+const HEATMAP_FREE_STORAGE_KEY = "holidayPlanner.heatmapShowFree";
 let statusToastTimer = null;
 const inHub = window !== window.parent;
 
@@ -55,6 +56,22 @@ function writeHideCompletedPref(value) {
   }
 }
 
+function readHeatmapFreePref() {
+  try {
+    return window.localStorage.getItem(HEATMAP_FREE_STORAGE_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
+function writeHeatmapFreePref(value) {
+  try {
+    window.localStorage.setItem(HEATMAP_FREE_STORAGE_KEY, value ? "1" : "0");
+  } catch (_) {
+    // Ignore localStorage access issues.
+  }
+}
+
 const state = {
   people: [],
   peopleNames: [],
@@ -62,6 +79,7 @@ const state = {
   bankHolidays: [],
   year: readSelectedYearPref() ?? defaultPlannerYear(),
   hideCompleted: readHideCompletedPref(),
+  showHeatmapFree: readHeatmapFreePref(),
   view: "table",
 };
 
@@ -108,6 +126,7 @@ const el = {
   addCountry: document.getElementById("add-country"),
   editCountry: document.getElementById("edit-country"),
   holidayHeatmap: document.getElementById("holiday-heatmap"),
+  holidayBurndown: document.getElementById("holiday-burndown"),
   holidayTodos: document.getElementById("holiday-todos"),
   nextBigHolidayHero: document.getElementById("next-big-holiday-hero"),
   openAllowance: document.getElementById("open-allowance"),
@@ -669,68 +688,396 @@ function updateHolidayAllowanceWarning() {
 function renderHolidayHeatmap() {
   if (!el.holidayHeatmap) return;
   const year = state.year;
-  const monthTripTotals = Array(12).fill(0);
-  const monthDaysOffTotals = Array(12).fill(0);
-  for (const h of holidaysForYear(year)) {
-    const s = parseDate(h.startDate);
-    const e = parseDate(h.endDate);
-    const daysOffWork = Number(h.daysOffWork || 0);
-    const length = Math.max(0, tripLengthDays(h));
-    const monthIdx = s.getMonth();
-    monthTripTotals[monthIdx] += length;
-    monthDaysOffTotals[monthIdx] += daysOffWork;
-  }
+  const PLOT_H = 140;
+  const HEATMAP_COLORS = ["#0057b8", "#d50000", "#2d8f5d", "#6a2ca0", "#e07b00", "#008a8a"];
+  const colorFor = (name) => HEATMAP_COLORS[Math.max(0, state.peopleNames.indexOf(name)) % HEATMAP_COLORS.length];
+  const fmtDays = (d) => (Number.isInteger(d) ? String(d) : d.toFixed(1));
+  const showFree = state.showHeatmapFree;
 
-  const maxVal = Math.max(...monthTripTotals, ...monthDaysOffTotals, 1);
+  // Per person, per (start) month: days off work, plus the free (weekend/bank-holiday)
+  // portion of each trip (= trip length minus days off work). Half days stay fractional.
+  const monthPeople = Array.from({ length: 12 }, () => ({}));
+  for (const h of holidaysForYear(year)) {
+    const monthIdx = parseDate(h.startDate).getMonth();
+    const tripLen = Math.max(0, tripLengthDays(h));
+    const off = Number(h.daysOffWork || 0);
+    const free = Math.max(0, tripLen - off);
+    for (const [name, days] of Object.entries(h.peopleDays || {})) {
+      const w = Number(days) || 0;
+      if (w <= 0) continue;
+      const slot = monthPeople[monthIdx][name] || (monthPeople[monthIdx][name] = { worked: 0, free: 0 });
+      slot.worked += w;
+      slot.free += free;
+    }
+  }
+  const peopleInChart = state.peopleNames.filter((n) => monthPeople.some((m) => (m[n]?.worked || 0) > 0));
+
+  // Scale to the tallest single bar (worked, plus free when shown), not the month sum.
+  let maxBar = 1;
+  for (const m of monthPeople) {
+    for (const slot of Object.values(m)) {
+      maxBar = Math.max(maxBar, slot.worked + (showFree ? slot.free : 0));
+    }
+  }
+  // Pick a tidy axis step (1/2/5 × 10ⁿ) that fits the displayed maximum.
+  const rough = maxBar / 4;
+  const pow = Math.pow(10, Math.floor(Math.log10(rough || 1)));
+  const frac = rough / pow;
+  const step = (frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10) * pow;
+  const niceMax = Math.max(step, Math.ceil(maxBar / step) * step);
+  const ticks = [];
+  for (let v = 0; v <= niceMax + 1e-9; v += step) ticks.push(Math.round(v * 100) / 100);
+
+  const todayDate = parseDate(todayIsoLocal());
+  const isPastMonth = (idx) => new Date(year, idx + 1, 0) < todayDate;
+
   const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(maxVal * f));
-  const yTickMarkup = yTicks
-    .slice()
-    .reverse()
-    .map((v) => `<span>${v}</span>`)
+  const monthFull = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
+  const yTickMarkup = ticks
+    .map((v) => `<span style="bottom:${((v / niceMax) * PLOT_H).toFixed(2)}px">${fmtDays(v)}</span>`)
     .join("");
-  const yGridMarkup = yTicks
-    .slice()
-    .reverse()
-    .map(() => `<span class="y-grid-line"></span>`)
+  const yGridMarkup = ticks
+    .map((v) => `<span class="y-grid-line" style="bottom:${((v / niceMax) * PLOT_H).toFixed(2)}px"></span>`)
     .join("");
+
   const bars = monthShort
     .map((label, idx) => {
-      const tripVal = monthTripTotals[idx];
-      const offVal = monthDaysOffTotals[idx];
-      const tripH = Math.round((tripVal / maxVal) * 120);
-      const offH = Math.round((offVal / maxVal) * 120);
-      return `
-      <div class="month-bar-wrap" title="${label}: ${tripVal} total days, ${offVal} days off work">
-        <div class="month-bars-overlap">
-          <div class="month-bar month-bar-total" style="height:${tripH}px"></div>
-          <div class="month-bar month-bar-off" style="height:${offH}px"></div>
-        </div>
-        <span class="month-val"></span>
-        <span class="month-label">${label}</span>
-      </div>`;
+      const perPerson = monthPeople[idx];
+      const past = isPastMonth(idx);
+      const personBars = peopleInChart
+        .filter((n) => (perPerson[n]?.worked || 0) > 0)
+        .map((n) => {
+          const { worked, free } = perPerson[n];
+          const workedH = (worked / niceMax) * PLOT_H;
+          const freeH = showFree ? (free / niceMax) * PLOT_H : 0;
+          const freeSeg = freeH > 0
+            ? `<div class="seg seg-free" style="height:${freeH.toFixed(2)}px;--seg-color:${colorFor(n)}"></div>`
+            : "";
+          return `<div class="person-bar"><div class="seg seg-worked" style="height:${workedH.toFixed(2)}px;background:${colorFor(n)}"></div>${freeSeg}</div>`;
+        })
+        .join("");
+      return `<div class="month-bar-wrap${past ? " month-past" : ""}" data-month="${idx}"><div class="month-group">${personBars}</div></div>`;
     })
     .join("");
 
+  const monthLabels = monthShort
+    .map((label, idx) => `<span class="${isPastMonth(idx) ? "month-past" : ""}">${label}</span>`)
+    .join("");
+
+  const legendPeople = peopleInChart.length
+    ? peopleInChart.map((n) => `<span><span class="legend-swatch" style="background:${colorFor(n)}"></span>${n}</span>`).join("")
+    : `<span>No holiday booked yet for ${year}</span>`;
+  const freeLegend = showFree
+    ? `<span><span class="legend-swatch legend-free"></span>Weekend / bank holiday</span>`
+    : "";
+
   el.holidayHeatmap.innerHTML = `
     <div class="heatmap-wrap">
-      <p><strong>Holiday Intensity By Month (${year})</strong></p>
-      <div class="intensity-chart-wrap">
+      <div class="heatmap-head">
+        <p><strong>Days Off Work By Month</strong></p>
+        <label class="heatmap-values-toggle">
+          <input type="checkbox" id="heatmap-free-check" ${showFree ? "checked" : ""} />
+          Include weekends &amp; bank holidays
+        </label>
+      </div>
+      <div class="intensity-chart-wrap" style="--plot-h:${PLOT_H}px">
         <div class="intensity-y-axis" aria-hidden="true">
           <span class="y-axis-title">Days</span>
           ${yTickMarkup}
         </div>
         <div class="intensity-plot-wrap">
-          <div class="intensity-y-grid" aria-hidden="true">${yGridMarkup}</div>
-          <div class="month-intensity-chart">${bars}</div>
+          <div class="intensity-plot">
+            <div class="intensity-y-grid" aria-hidden="true">${yGridMarkup}</div>
+            <div class="month-intensity-chart">${bars}</div>
+          </div>
+          <div class="month-labels">${monthLabels}</div>
+          <div class="heatmap-tooltip" hidden></div>
         </div>
       </div>
       <div class="heatmap-legend">
-        <span><span class="legend-swatch legend-total"></span>Total holiday days</span>
-        <span><span class="legend-swatch legend-off"></span>Days off work</span>
+        ${legendPeople}
+        ${freeLegend}
       </div>
     </div>
   `;
+
+  // --- Interactivity: real-time hover tooltip + free-days toggle ---
+  const chart = el.holidayHeatmap.querySelector(".month-intensity-chart");
+  const plotWrap = el.holidayHeatmap.querySelector(".intensity-plot-wrap");
+  const tip = el.holidayHeatmap.querySelector(".heatmap-tooltip");
+
+  if (chart && plotWrap && tip) {
+    const showTip = (e) => {
+      const wrap = e.target.closest(".month-bar-wrap");
+      if (!wrap) {
+        tip.hidden = true;
+        return;
+      }
+      const idx = Number(wrap.dataset.month);
+      const perPerson = monthPeople[idx];
+      const participants = peopleInChart.filter((n) => (perPerson[n]?.worked || 0) > 0);
+      let totalOff = 0;
+      const rows = participants.length
+        ? participants
+            .map((n) => {
+              const { worked, free } = perPerson[n];
+              totalOff += worked;
+              const freeBit = showFree && free > 0 ? ` <span class="tip-muted">+${fmtDays(free)} free</span>` : "";
+              return `<div class="tip-row"><span class="tip-dot" style="background:${colorFor(n)}"></span>${n}: <strong>${fmtDays(worked)}</strong> off${freeBit}</div>`;
+            })
+            .join("")
+        : `<div class="tip-row tip-muted">No holiday booked</div>`;
+      const totalRow = participants.length ? `<div class="tip-row tip-total">Total off: <strong>${fmtDays(totalOff)}</strong></div>` : "";
+      tip.innerHTML = `<div class="tip-date">${monthFull[idx]}${isPastMonth(idx) ? " (past)" : ""}</div>${rows}${totalRow}`;
+      tip.hidden = false;
+
+      const plotRect = plotWrap.getBoundingClientRect();
+      const tipW = tip.offsetWidth;
+      let left = e.clientX - plotRect.left + 14;
+      if (left + tipW > plotRect.width) left = e.clientX - plotRect.left - tipW - 14;
+      tip.style.left = `${Math.max(0, left)}px`;
+      tip.style.top = `${Math.max(0, e.clientY - plotRect.top - 8)}px`;
+    };
+    chart.addEventListener("pointermove", showTip);
+    chart.addEventListener("pointerdown", showTip);
+    chart.addEventListener("pointerleave", () => { tip.hidden = true; });
+  }
+
+  const freeCheck = el.holidayHeatmap.querySelector("#heatmap-free-check");
+  if (freeCheck) {
+    freeCheck.addEventListener("change", () => {
+      state.showHeatmapFree = freeCheck.checked;
+      writeHeatmapFreePref(freeCheck.checked);
+      renderHolidayHeatmap();
+    });
+  }
+}
+
+function renderHolidayBurndown() {
+  if (!el.holidayBurndown) return;
+  const year = state.year;
+  const peopleNames = state.peopleNames;
+
+  if (!peopleNames.length) {
+    el.holidayBurndown.innerHTML = "";
+    return;
+  }
+
+  const allowanceByName = new Map(state.people.map((p) => [p.name, p.standard + p.additional]));
+  const holidaysThisYear = holidaysForYear(year).sort((a, b) => a.startDate.localeCompare(b.startDate));
+
+  const today = todayIsoLocal();
+  const yearStart = `${year}-01-01`;
+  const yearEnd = `${year}-12-31`;
+  const yearStartDate = parseDate(yearStart);
+  const yearEndDate = parseDate(yearEnd);
+  const totalYearDays = Math.round((yearEndDate - yearStartDate) / (1000 * 60 * 60 * 24));
+
+  // Wide aspect so the SVG scales to fill the full panel width (viewBox-driven,
+  // matching the bold framing of the intensity chart above).
+  const W = 1000, H = 320, padL = 52, padR = 18, padT = 34, padB = 34;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+
+  const offsetForDate = (dateStr) => {
+    const clamped = dateStr < yearStart ? yearStart : dateStr > yearEnd ? yearEnd : dateStr;
+    return Math.round((parseDate(clamped) - yearStartDate) / (1000 * 60 * 60 * 24));
+  };
+  const xForOffset = (off) => padL + (off / totalYearDays) * chartW;
+  const xFor = (dateStr) => xForOffset(offsetForDate(dateStr));
+
+  const maxAllowance = Math.max(...peopleNames.map((n) => allowanceByName.get(n) || 0), 10);
+  const yMax = Math.ceil(maxAllowance / 5) * 5 + 5;
+
+  const yFor = (v) => padT + chartH - Math.max(0, Math.min(v / yMax, 1)) * chartH;
+
+  // Bold, saturated palette consistent with --blue / --red used elsewhere.
+  const COLORS = ["#0057b8", "#d50000", "#2d8f5d", "#6a2ca0", "#e07b00", "#008a8a"];
+
+  const todayInYear = today >= yearStart && today <= yearEnd;
+  const todayOffset = offsetForDate(today <= yearEnd ? today : yearEnd);
+
+  // Per-person model: remaining balance at any day offset.
+  const people = peopleNames.map((name, idx) => {
+    const allowance = allowanceByName.get(name) || 0;
+    const color = COLORS[idx % COLORS.length];
+    const events = holidaysThisYear
+      .filter((h) => Number(h.peopleDays?.[name] || 0) > 0)
+      .map((h) => ({
+        days: Number(h.peopleDays[name]),
+        startOffset: offsetForDate(h.startDate),
+        endOffset: offsetForDate(h.endDate),
+      }))
+      .sort((a, b) => a.startOffset - b.startOffset);
+
+    // Consumption ramps linearly across each trip's days rather than dropping all at once.
+    const balanceAtOffset = (off) => {
+      let bal = allowance;
+      for (const ev of events) {
+        if (off >= ev.endOffset) {
+          bal -= ev.days;
+        } else if (off > ev.startOffset) {
+          const span = ev.endOffset - ev.startOffset;
+          bal -= ev.days * (span > 0 ? (off - ev.startOffset) / span : 1);
+        }
+      }
+      return bal;
+    };
+
+    return { name, idx, allowance, color, events, balanceAtOffset };
+  });
+
+  // Burndown lines: usage slopes down across each trip's span; solid up to today, dotted after.
+  const linesMarkup = people.map((p) => {
+    // Vertex path of (offset, balance): flat between trips, sloped during each trip.
+    const verts = [{ off: 0, bal: p.allowance }];
+    let balance = p.allowance;
+    for (const ev of p.events) {
+      verts.push({ off: ev.startOffset, bal: balance });
+      balance -= ev.days;
+      verts.push({ off: ev.endOffset, bal: balance });
+    }
+    verts.push({ off: totalYearDays, bal: balance });
+
+    // Split the path at today, interpolating a vertex on any segment that straddles it.
+    const tOff = todayOffset;
+    const solidPts = [];
+    const dottedPts = [];
+    const addToSide = (off, bal) => {
+      const pt = `${xForOffset(off).toFixed(1)},${yFor(bal).toFixed(1)}`;
+      if (off <= tOff) solidPts.push(pt);
+      if (off >= tOff) dottedPts.push(pt);
+    };
+
+    addToSide(verts[0].off, verts[0].bal);
+    for (let i = 1; i < verts.length; i++) {
+      const a = verts[i - 1];
+      const b = verts[i];
+      if (a.off < tOff && b.off > tOff && b.off !== a.off) {
+        const t = (tOff - a.off) / (b.off - a.off);
+        addToSide(tOff, a.bal + (b.bal - a.bal) * t);
+      }
+      addToSide(b.off, b.bal);
+    }
+
+    const poly = (pts, dash) =>
+      pts.length >= 2
+        ? `<polyline points="${pts.join(" ")}" fill="none" stroke="${p.color}" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"${dash ? ' stroke-dasharray="2,7"' : ""}/>`
+        : "";
+
+    return poly(solidPts, false) + poly(dottedPts, true);
+  }).join("");
+
+  // Y grid + ticks: dashed lines matching the intensity chart's grid.
+  const Y_STEPS = 5;
+  const yAxis = Array.from({ length: Y_STEPS + 1 }, (_, i) => {
+    const val = Math.round((i / Y_STEPS) * yMax);
+    const y = yFor(val);
+    return `<line x1="${padL}" y1="${y}" x2="${padL + chartW}" y2="${y}" stroke="rgba(17,17,17,0.25)" stroke-width="1" stroke-dasharray="4,4"/>
+            <text x="${padL - 8}" y="${y + 4}" font-size="13" text-anchor="end" fill="#4f4f4f" font-family="inherit">${val}</text>`;
+  }).join("");
+
+  // X axis: month labels along the bottom.
+  const MONTH_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const xAxis = MONTH_SHORT.map((label, i) => {
+    const x = xFor(formatDate(new Date(year, i, 1)));
+    return `<text x="${x}" y="${padT + chartH + 20}" font-size="12" text-anchor="middle" fill="#4f4f4f" font-family="inherit">${label}</text>`;
+  }).join("");
+
+  // Bold black L-frame (left + bottom axis) echoing the bordered bars, with a rotated "Days" title.
+  const yMid = padT + chartH / 2;
+  const frame = `
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + chartH}" stroke="#111" stroke-width="2"/>
+    <line x1="${padL}" y1="${padT + chartH}" x2="${padL + chartW}" y2="${padT + chartH}" stroke="#111" stroke-width="2"/>
+    <text x="13" y="${yMid}" transform="rotate(-90 13 ${yMid})" font-size="12" font-weight="700" text-anchor="middle" fill="#333" font-family="inherit">Days</text>`;
+
+  // Today marker
+  const todayLine = todayInYear
+    ? `<line x1="${xForOffset(todayOffset)}" y1="${padT}" x2="${xForOffset(todayOffset)}" y2="${padT + chartH}" stroke="var(--red)" stroke-width="2" stroke-dasharray="5,4"/>`
+    : "";
+
+  // Transparent overlay + crosshair guide drive the hover tooltip.
+  const overlay = `<rect id="burndown-overlay" x="${padL}" y="${padT}" width="${chartW}" height="${chartH}" fill="transparent" style="cursor:crosshair"/>`;
+  const guide = `<line id="burndown-guide" x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + chartH}" stroke="#111" stroke-width="1" stroke-dasharray="2,3" opacity="0" pointer-events="none"/>`;
+
+  const swatches = peopleNames.map((name, idx) => {
+    const color = COLORS[idx % COLORS.length];
+    return `<span><span class="legend-swatch" style="background:${color}"></span>${name}</span>`;
+  }).join("");
+
+  el.holidayBurndown.innerHTML = `
+    <div class="burndown-wrap">
+      <p><strong>Holiday Allowance Burndown (${year})</strong></p>
+      <div class="burndown-chart-scroll">
+        <svg class="burndown-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Remaining holiday allowance burned down over ${year}">
+          ${yAxis}
+          ${frame}
+          ${xAxis}
+          ${todayLine}
+          ${linesMarkup}
+          ${guide}
+          ${overlay}
+        </svg>
+        <div class="burndown-tooltip" hidden></div>
+      </div>
+      <div class="heatmap-legend">
+        ${swatches}
+      </div>
+      <div class="burndown-key">
+        <span><svg width="24" height="10" style="vertical-align:middle"><line x1="0" y1="5" x2="24" y2="5" stroke="#111" stroke-width="3" stroke-linecap="round"/></svg> Past / booked</span>
+        <span><svg width="24" height="10" style="vertical-align:middle"><line x1="0" y1="5" x2="24" y2="5" stroke="#111" stroke-width="3" stroke-dasharray="2,5" stroke-linecap="round"/></svg> Projected</span>
+        ${todayInYear ? `<span><svg width="24" height="10" style="vertical-align:middle"><line x1="12" y1="0" x2="12" y2="10" stroke="#d50000" stroke-width="2" stroke-dasharray="3,3"/></svg> Today</span>` : ""}
+      </div>
+    </div>
+  `;
+
+  // --- Interactivity: hover tooltip + toggle ---
+  const svg = el.holidayBurndown.querySelector(".burndown-svg");
+  const overlayEl = el.holidayBurndown.querySelector("#burndown-overlay");
+  const guideEl = el.holidayBurndown.querySelector("#burndown-guide");
+  const tip = el.holidayBurndown.querySelector(".burndown-tooltip");
+  const scrollWrap = el.holidayBurndown.querySelector(".burndown-chart-scroll");
+
+  if (svg && overlayEl && guideEl && tip && scrollWrap) {
+    const moveHandler = (clientX) => {
+      const rect = svg.getBoundingClientRect();
+      const scale = rect.width / W;
+      const xSvg = Math.max(padL, Math.min(padL + chartW, (clientX - rect.left) / scale));
+      const fraction = (xSvg - padL) / chartW;
+      const off = Math.round(fraction * totalYearDays);
+
+      guideEl.setAttribute("x1", xSvg);
+      guideEl.setAttribute("x2", xSvg);
+      guideEl.setAttribute("opacity", "0.6");
+
+      const dateIso = formatDate(addDays(yearStartDate, off));
+      const rows = people.map((p) => {
+        const remaining = p.balanceAtOffset(off);
+        return `<div class="tip-row"><span class="tip-dot" style="background:${p.color}"></span>${p.name}: <strong>${Number(remaining.toFixed(2))}</strong> left</div>`;
+      }).join("");
+
+      tip.innerHTML = `<div class="tip-date">${formatDayMonth(dateIso)}</div>${rows}`;
+      tip.hidden = false;
+
+      // Position the tooltip near the cursor within the scroll wrap, flipping side near the right edge.
+      const wrapRect = scrollWrap.getBoundingClientRect();
+      const tipW = tip.offsetWidth;
+      let left = clientX - wrapRect.left + scrollWrap.scrollLeft + 14;
+      if (left + tipW > scrollWrap.scrollLeft + wrapRect.width) {
+        left = clientX - wrapRect.left + scrollWrap.scrollLeft - tipW - 14;
+      }
+      tip.style.left = `${Math.max(0, left)}px`;
+      tip.style.top = `8px`;
+    };
+
+    overlayEl.addEventListener("pointermove", (e) => moveHandler(e.clientX));
+    overlayEl.addEventListener("pointerdown", (e) => moveHandler(e.clientX));
+    overlayEl.addEventListener("pointerleave", () => {
+      guideEl.setAttribute("opacity", "0");
+      tip.hidden = true;
+    });
+  }
 }
 
 function renderHolidayTodos() {
@@ -1043,6 +1390,7 @@ function render() {
   renderNextBigHolidayHero();
   renderPeopleSummary();
   renderHolidayHeatmap();
+  renderHolidayBurndown();
   renderHolidayTodos();
   renderHolidayTable();
   renderCalendar();
