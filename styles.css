@@ -640,6 +640,7 @@ tr:hover { background: #fff7db; }
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  align-items: center;
   margin-top: 10px;
 }
 
@@ -672,11 +673,22 @@ tr:hover { background: #fff7db; }
 .intensity-chart-wrap {
   display: grid;
   grid-template-columns: 36px 1fr;
-  gap: 6px;
+  grid-template-rows: auto 1fr;
+  gap: 2px 6px;
   align-items: start;
   width: 100%;
   min-width: 0;
-  margin-top: 22px;
+  margin-top: 12px;
+}
+
+.intensity-y-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #333;
+  text-align: right;
+  padding-right: 4px;
+  padding-bottom: 10px;
+  align-self: end;
 }
 
 .intensity-y-axis {
@@ -695,7 +707,6 @@ tr:hover { background: #fff7db; }
 }
 
 .y-axis-title {
-  top: -20px;
   bottom: auto;
   transform: none;
   font-size: 0.68rem;
@@ -758,7 +769,7 @@ tr:hover { background: #fff7db; }
 .person-bar {
   display: flex;
   flex-direction: column-reverse;
-  width: 18px;
+  width: 28px;
   max-width: 48%;
   border: 2px solid #111;
 }
@@ -826,12 +837,23 @@ tr:hover { background: #fff7db; }
 
 .heatmap-values-toggle {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
   gap: 6px;
   font-size: 0.82rem;
   color: var(--muted);
   cursor: pointer;
   user-select: none;
+  white-space: nowrap;
+}
+
+.heatmap-values-toggle input {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  margin: 0;
 }
 
 .burndown-chart-scroll {
