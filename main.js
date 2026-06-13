@@ -685,10 +685,11 @@ function updateHolidayAllowanceWarning() {
   el.holidayAllowanceWarning.classList.remove("hidden");
 }
 
+
 function renderHolidayHeatmap() {
   if (!el.holidayHeatmap) return;
   const year = state.year;
-  const PLOT_H = 140;
+  const PLOT_H = 280;  // ← Taller chart
   const HEATMAP_COLORS = ["#0057b8", "#d50000", "#2d8f5d", "#6a2ca0", "#e07b00", "#008a8a"];
   const colorFor = (name) => HEATMAP_COLORS[Math.max(0, state.peopleNames.indexOf(name)) % HEATMAP_COLORS.length];
   const fmtDays = (d) => (Number.isInteger(d) ? String(d) : d.toFixed(1));
@@ -1023,11 +1024,6 @@ function renderHolidayBurndown() {
       </div>
       <div class="heatmap-legend">
         ${swatches}
-      </div>
-      <div class="burndown-key">
-        <span><svg width="24" height="10" style="vertical-align:middle"><line x1="0" y1="5" x2="24" y2="5" stroke="#111" stroke-width="3" stroke-linecap="round"/></svg> Past / booked</span>
-        <span><svg width="24" height="10" style="vertical-align:middle"><line x1="0" y1="5" x2="24" y2="5" stroke="#111" stroke-width="3" stroke-dasharray="2,5" stroke-linecap="round"/></svg> Projected</span>
-        ${todayInYear ? `<span><svg width="24" height="10" style="vertical-align:middle"><line x1="12" y1="0" x2="12" y2="10" stroke="#d50000" stroke-width="2" stroke-dasharray="3,3"/></svg> Today</span>` : ""}
       </div>
     </div>
   `;
