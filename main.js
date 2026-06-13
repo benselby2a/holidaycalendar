@@ -619,7 +619,7 @@ function renderPeopleSummary() {
       return `<span class="allowance-chip"><strong>${name}</strong>: <span class="${remainingClass}">${remaining}</span> remaining</span>`;
     })
     .join("");
-  if (el.allowanceSummary) el.allowanceSummary.innerHTML = `<div class="allowance-summary">${summaryChips}</div>`;
+  if (el.allowanceSummary) el.allowanceSummary.innerHTML = `<div class="allowance-summary">${summaryChips}<label class="heatmap-values-toggle"><input type="checkbox" id="heatmap-free-check" ${state.showHeatmapFree ? "checked" : ""} /> Include weekends &amp; bank holidays</label></div>`;
   if (el.allowanceYearLabel) el.allowanceYearLabel.textContent = String(state.year);
   if (el.allowancePerson) {
     const prevSelected = el.allowancePerson.value;
@@ -705,13 +705,15 @@ function renderHolidayHeatmap() {
     const free = Math.max(0, tripLen - off);
     for (const [name, days] of Object.entries(h.peopleDays || {})) {
       const w = Number(days) || 0;
-      if (w <= 0) continue;
+      if (w <= 0 && free <= 0) continue;
       const slot = monthPeople[monthIdx][name] || (monthPeople[monthIdx][name] = { worked: 0, free: 0 });
       slot.worked += w;
       slot.free += free;
     }
   }
-  const peopleInChart = state.peopleNames.filter((n) => monthPeople.some((m) => (m[n]?.worked || 0) > 0));
+  const peopleInChart = state.peopleNames.filter((n) =>
+    monthPeople.some((m) => (m[n]?.worked || 0) > 0 || (showFree && (m[n]?.free || 0) > 0))
+  );
 
   // Scale to the tallest single bar (worked, plus free when shown), not the month sum.
   let maxBar = 1;
@@ -747,9 +749,9 @@ function renderHolidayHeatmap() {
       const perPerson = monthPeople[idx];
       const past = isPastMonth(idx);
       const personBars = peopleInChart
-        .filter((n) => (perPerson[n]?.worked || 0) > 0)
+        .filter((n) => (perPerson[n]?.worked || 0) > 0 || (showFree && (perPerson[n]?.free || 0) > 0))
         .map((n) => {
-          const { worked, free } = perPerson[n];
+          const { worked = 0, free = 0 } = perPerson[n] || {};
           const workedH = (worked / niceMax) * PLOT_H;
           const freeH = showFree ? (free / niceMax) * PLOT_H : 0;
           const freeSeg = freeH > 0
@@ -777,14 +779,11 @@ function renderHolidayHeatmap() {
     <div class="heatmap-wrap">
       <div class="heatmap-head">
         <p><strong>Days Off Work By Month</strong></p>
-        <label class="heatmap-values-toggle">
-          <input type="checkbox" id="heatmap-free-check" ${showFree ? "checked" : ""} />
-          Include weekends &amp; bank holidays
-        </label>
       </div>
       <div class="intensity-chart-wrap" style="--plot-h:${PLOT_H}px">
+        <div class="intensity-y-label" aria-hidden="true">Days</div>
+        <div></div>
         <div class="intensity-y-axis" aria-hidden="true">
-          <span class="y-axis-title">Days</span>
           ${yTickMarkup}
         </div>
         <div class="intensity-plot-wrap">
@@ -818,19 +817,16 @@ function renderHolidayHeatmap() {
       const idx = Number(wrap.dataset.month);
       const perPerson = monthPeople[idx];
       const participants = peopleInChart.filter((n) => (perPerson[n]?.worked || 0) > 0);
-      let totalOff = 0;
       const rows = participants.length
         ? participants
             .map((n) => {
               const { worked, free } = perPerson[n];
-              totalOff += worked;
               const freeBit = showFree && free > 0 ? ` <span class="tip-muted">+${fmtDays(free)} free</span>` : "";
               return `<div class="tip-row"><span class="tip-dot" style="background:${colorFor(n)}"></span>${n}: <strong>${fmtDays(worked)}</strong> off${freeBit}</div>`;
             })
             .join("")
         : `<div class="tip-row tip-muted">No holiday booked</div>`;
-      const totalRow = participants.length ? `<div class="tip-row tip-total">Total off: <strong>${fmtDays(totalOff)}</strong></div>` : "";
-      tip.innerHTML = `<div class="tip-date">${monthFull[idx]}${isPastMonth(idx) ? " (past)" : ""}</div>${rows}${totalRow}`;
+      tip.innerHTML = `<div class="tip-date">${monthFull[idx]}${isPastMonth(idx) ? " (past)" : ""}</div>${rows}`;
       tip.hidden = false;
 
       const plotRect = plotWrap.getBoundingClientRect();
@@ -845,7 +841,7 @@ function renderHolidayHeatmap() {
     chart.addEventListener("pointerleave", () => { tip.hidden = true; });
   }
 
-  const freeCheck = el.holidayHeatmap.querySelector("#heatmap-free-check");
+  const freeCheck = document.getElementById("heatmap-free-check");
   if (freeCheck) {
     freeCheck.addEventListener("change", () => {
       state.showHeatmapFree = freeCheck.checked;
@@ -889,7 +885,14 @@ function renderHolidayBurndown() {
   const xFor = (dateStr) => xForOffset(offsetForDate(dateStr));
 
   const maxAllowance = Math.max(...peopleNames.map((n) => allowanceByName.get(n) || 0), 10);
-  const yMax = Math.ceil(maxAllowance / 5) * 5 + 5;
+  // Tidy step function matching intensity chart: 1/2/5 × 10ⁿ
+  const rough = maxAllowance / 4;
+  const pow = Math.pow(10, Math.floor(Math.log10(rough || 1)));
+  const frac = rough / pow;
+  const yStep = (frac <= 1 ? 1 : frac <= 2 ? 2 : frac <= 5 ? 5 : 10) * pow;
+  const yMax = Math.max(yStep, Math.ceil(maxAllowance / yStep) * yStep);
+  const yTicks = [];
+  for (let v = 0; v <= yMax + 1e-9; v += yStep) yTicks.push(Math.round(v * 100) / 100);
 
   const yFor = (v) => padT + chartH - Math.max(0, Math.min(v / yMax, 1)) * chartH;
 
@@ -970,13 +973,11 @@ function renderHolidayBurndown() {
     return poly(solidPts, false) + poly(dottedPts, true);
   }).join("");
 
-  // Y grid + ticks: dashed lines matching the intensity chart's grid.
-  const Y_STEPS = 5;
-  const yAxis = Array.from({ length: Y_STEPS + 1 }, (_, i) => {
-    const val = Math.round((i / Y_STEPS) * yMax);
+  // Y grid + ticks: dashed lines + labels matching the intensity chart's grid style.
+  const yAxis = yTicks.map((val) => {
     const y = yFor(val);
     return `<line x1="${padL}" y1="${y}" x2="${padL + chartW}" y2="${y}" stroke="rgba(17,17,17,0.25)" stroke-width="1" stroke-dasharray="4,4"/>
-            <text x="${padL - 8}" y="${y + 4}" font-size="13" text-anchor="end" fill="#4f4f4f" font-family="inherit">${val}</text>`;
+            <text x="${padL - 6}" y="${y + 4}" font-size="11" text-anchor="end" fill="#4f4f4f" font-family="inherit">${val}</text>`;
   }).join("");
 
   // X axis: month labels along the bottom.
@@ -986,12 +987,11 @@ function renderHolidayBurndown() {
     return `<text x="${x}" y="${padT + chartH + 20}" font-size="12" text-anchor="middle" fill="#4f4f4f" font-family="inherit">${label}</text>`;
   }).join("");
 
-  // Bold black L-frame (left + bottom axis) echoing the bordered bars, with a rotated "Days" title.
-  const yMid = padT + chartH / 2;
+  // Bold black L-frame (left + bottom axis) echoing the bordered bars, with "Days" above the top tick.
   const frame = `
     <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + chartH}" stroke="#111" stroke-width="2"/>
     <line x1="${padL}" y1="${padT + chartH}" x2="${padL + chartW}" y2="${padT + chartH}" stroke="#111" stroke-width="2"/>
-    <text x="13" y="${yMid}" transform="rotate(-90 13 ${yMid})" font-size="12" font-weight="700" text-anchor="middle" fill="#333" font-family="inherit">Days</text>`;
+    <text x="${padL - 6}" y="${padT - 14}" font-size="10" font-weight="700" text-anchor="end" fill="#333" font-family="inherit">Days</text>`;
 
   // Today marker
   const todayLine = todayInYear
@@ -1009,7 +1009,7 @@ function renderHolidayBurndown() {
 
   el.holidayBurndown.innerHTML = `
     <div class="burndown-wrap">
-      <p><strong>Holiday Allowance Burndown (${year})</strong></p>
+      <p><strong>Holiday Allowance Burndown</strong></p>
       <div class="burndown-chart-scroll">
         <svg class="burndown-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Remaining holiday allowance burned down over ${year}">
           ${yAxis}
