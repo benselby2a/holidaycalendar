@@ -1107,7 +1107,7 @@ function renderHolidayTodos() {
 
   el.holidayTodos.innerHTML = `
     <div class="holiday-todos">
-      <p class="todo-section-title"><strong>To Do</strong> - planned but not booked (${plannedNotBooked.length})</p>
+      <p class="todo-section-title"><strong>To Do</strong> - planned but not booked</p>
       ${todoMarkup}
     </div>
   `;
