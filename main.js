@@ -17,6 +17,26 @@ if (inHub) {
   document.documentElement.setAttribute("data-hub", "");
 }
 
+(function initThemeToggle() {
+  const saved = localStorage.getItem("mhp-theme");
+  if (saved) document.documentElement.setAttribute("data-theme", saved);
+  const btn = document.getElementById("theme-toggle-btn");
+  if (!btn) return;
+  function updateIcon() {
+    const dark = document.documentElement.getAttribute("data-theme") === "dark";
+    btn.textContent = dark ? "☀️" : "🌙";
+  }
+  updateIcon();
+  btn.addEventListener("click", function () {
+    const current = document.documentElement.getAttribute("data-theme");
+    const next = current === "dark" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", next);
+    localStorage.setItem("mhp-theme", next);
+    updateIcon();
+  });
+  new MutationObserver(updateIcon).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+})();
+
 function defaultPlannerYear() {
   return new Date().getFullYear();
 }
@@ -619,7 +639,7 @@ function renderPeopleSummary() {
       return `<span class="allowance-chip"><strong>${name}</strong>: <span class="${remainingClass}">${remaining}</span> remaining</span>`;
     })
     .join("");
-  if (el.allowanceSummary) el.allowanceSummary.innerHTML = `<div class="allowance-summary">${summaryChips}<label class="heatmap-values-toggle"><input type="checkbox" id="heatmap-free-check" ${state.showHeatmapFree ? "checked" : ""} /> Include weekends &amp; bank holidays</label></div>`;
+  if (el.allowanceSummary) el.allowanceSummary.innerHTML = `<div class="allowance-summary">${summaryChips}<label class="heatmap-values-toggle"><input type="checkbox" id="heatmap-free-check" ${state.showHeatmapFree ? "checked" : ""} /><span>Include weekends &amp; bank holidays</span></label></div>`;
   if (el.allowanceYearLabel) el.allowanceYearLabel.textContent = String(state.year);
   if (el.allowancePerson) {
     const prevSelected = el.allowancePerson.value;
@@ -690,7 +710,7 @@ function renderHolidayHeatmap() {
   if (!el.holidayHeatmap) return;
   const year = state.year;
   const PLOT_H = 280;  // ← Taller chart
-  const HEATMAP_COLORS = ["#0057b8", "#d50000", "#2d8f5d", "#6a2ca0", "#e07b00", "#008a8a"];
+  const HEATMAP_COLORS = ["#3b82f6", "#f87171", "#34d399", "#a78bfa", "#fbbf24", "#2dd4bf"];
   const colorFor = (name) => HEATMAP_COLORS[Math.max(0, state.peopleNames.indexOf(name)) % HEATMAP_COLORS.length];
   const fmtDays = (d) => (Number.isInteger(d) ? String(d) : d.toFixed(1));
   const showFree = state.showHeatmapFree;
@@ -896,8 +916,7 @@ function renderHolidayBurndown() {
 
   const yFor = (v) => padT + chartH - Math.max(0, Math.min(v / yMax, 1)) * chartH;
 
-  // Bold, saturated palette consistent with --blue / --red used elsewhere.
-  const COLORS = ["#0057b8", "#d50000", "#2d8f5d", "#6a2ca0", "#e07b00", "#008a8a"];
+  const COLORS = ["#3b82f6", "#f87171", "#34d399", "#a78bfa", "#fbbf24", "#2dd4bf"];
 
   const todayInYear = today >= yearStart && today <= yearEnd;
   const todayOffset = offsetForDate(today <= yearEnd ? today : yearEnd);
@@ -977,30 +996,30 @@ function renderHolidayBurndown() {
   const yAxis = yTicks.map((val) => {
     const y = yFor(val);
     return `<line x1="${padL}" y1="${y}" x2="${padL + chartW}" y2="${y}" stroke="rgba(17,17,17,0.25)" stroke-width="1" stroke-dasharray="4,4"/>
-            <text x="${padL - 6}" y="${y + 4}" font-size="11" text-anchor="end" fill="#4f4f4f" font-family="inherit">${val}</text>`;
+            <text x="${padL - 6}" y="${y + 4}" font-size="11" text-anchor="end" fill="var(--muted)" font-family="inherit">${val}</text>`;
   }).join("");
 
   // X axis: month labels along the bottom.
   const MONTH_SHORT = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
   const xAxis = MONTH_SHORT.map((label, i) => {
     const x = xFor(formatDate(new Date(year, i, 1)));
-    return `<text x="${x}" y="${padT + chartH + 20}" font-size="12" text-anchor="middle" fill="#4f4f4f" font-family="inherit">${label}</text>`;
+    return `<text x="${x}" y="${padT + chartH + 20}" font-size="12" text-anchor="middle" fill="var(--muted)" font-family="inherit">${label}</text>`;
   }).join("");
 
   // Bold black L-frame (left + bottom axis) echoing the bordered bars, with "Days" above the top tick.
   const frame = `
-    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + chartH}" stroke="#111" stroke-width="2"/>
-    <line x1="${padL}" y1="${padT + chartH}" x2="${padL + chartW}" y2="${padT + chartH}" stroke="#111" stroke-width="2"/>
-    <text x="${padL - 6}" y="${padT - 14}" font-size="10" font-weight="700" text-anchor="end" fill="#333" font-family="inherit">Days</text>`;
+    <line x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + chartH}" stroke="var(--line-strong)" stroke-width="2"/>
+    <line x1="${padL}" y1="${padT + chartH}" x2="${padL + chartW}" y2="${padT + chartH}" stroke="var(--line-strong)" stroke-width="2"/>
+    <text x="${padL - 6}" y="${padT - 14}" font-size="10" font-weight="700" text-anchor="end" fill="var(--text)" font-family="inherit">Days</text>`;
 
   // Today marker
   const todayLine = todayInYear
-    ? `<line x1="${xForOffset(todayOffset)}" y1="${padT}" x2="${xForOffset(todayOffset)}" y2="${padT + chartH}" stroke="var(--red)" stroke-width="2" stroke-dasharray="5,4"/>`
+    ? `<line x1="${xForOffset(todayOffset)}" y1="${padT}" x2="${xForOffset(todayOffset)}" y2="${padT + chartH}" stroke="var(--warn)" stroke-width="2" stroke-dasharray="5,4"/>`
     : "";
 
   // Transparent overlay + crosshair guide drive the hover tooltip.
   const overlay = `<rect id="burndown-overlay" x="${padL}" y="${padT}" width="${chartW}" height="${chartH}" fill="transparent" style="cursor:crosshair"/>`;
-  const guide = `<line id="burndown-guide" x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + chartH}" stroke="#111" stroke-width="1" stroke-dasharray="2,3" opacity="0" pointer-events="none"/>`;
+  const guide = `<line id="burndown-guide" x1="${padL}" y1="${padT}" x2="${padL}" y2="${padT + chartH}" stroke="var(--muted)" stroke-width="1" stroke-dasharray="2,3" opacity="0" pointer-events="none"/>`;
 
   const swatches = peopleNames.map((name, idx) => {
     const color = COLORS[idx % COLORS.length];
@@ -1186,8 +1205,8 @@ function renderHolidayTable() {
         <td>${h.country || "-"}</td>
         <td>${startDisplay}</td>
         <td>${endDisplay}</td>
-        <td>${daysOffWork}</td>
         <td>${tripLength}</td>
+        <td>${daysOffWork}</td>
         <td>${benDays || "-"}</td>
         <td>${louiseDays || "-"}</td>
         <td><button type="button" class="edit-trip" data-id="${h.id}">Edit</button></td>
@@ -1232,8 +1251,8 @@ function renderHolidayTable() {
           <th>Country</th>
           <th>Start</th>
           <th>End</th>
-          <th>Days Off Work</th>
           <th>Trip Length</th>
+          <th>Days Off Work</th>
           <th>Ben</th>
           <th>Louise</th>
           <th>Actions</th>
