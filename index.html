@@ -7,10 +7,17 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="./icons/icon.svg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Fraunces:opsz,wght@9..144,600&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="styles.css" />
+    <script>
+      if (window !== window.parent) {
+        document.documentElement.setAttribute('data-hub', '');
+        window.addEventListener('message', function(e) {
+          if (e.data && e.data.type === 'theme') {
+            document.documentElement.setAttribute('data-theme', e.data.value);
+          }
+        });
+      }
+    </script>
   </head>
   <body>
     <div id="auth-gate" class="auth-gate">
@@ -29,12 +36,12 @@
         </form>
       </div>
     </div>
-    <div class="backdrop"></div>
     <main class="app hidden" id="app-main">
       <header class="hero">
         <div class="hub-hide" style="display:flex;align-items:center;gap:8px;justify-content:flex-end;padding:0.5rem 0">
-          <span id="user-email" style="font-size:0.75rem;color:#6b7280"></span>
-          <button id="sign-out-btn" type="button" style="font-size:0.7rem;padding:0.15rem 0.4rem;cursor:pointer">Sign Out</button>
+          <span id="user-email" style="font-size:0.75rem;color:var(--muted)"></span>
+          <button id="sign-out-btn" type="button" style="font-size:0.7rem;padding:0.15rem 0.4rem;min-height:auto;cursor:pointer">Sign Out</button>
+          <button id="theme-toggle-btn" type="button" aria-label="Toggle theme" style="font-size:0.7rem;padding:0.15rem 0.4rem;min-height:auto;cursor:pointer">🌙</button>
         </div>
         <p class="kicker">MHP</p>
         <h1>Manatee Holiday Planner 🐳🏖️</h1>
@@ -72,7 +79,7 @@
             <h2 id="views-heading">Planner View</h2>
             <label class="hide-completed-toggle" for="hide-completed">
               <input id="hide-completed" type="checkbox" />
-              Hide completed
+              <span>Hide completed</span>
             </label>
           </div>
           <div class="toggle" role="tablist" aria-label="View toggle">
