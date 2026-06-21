@@ -587,6 +587,7 @@ function renderPeopleSummary() {
   }
 
   const allowanceByName = new Map(state.people.map((p) => [p.name, p]));
+  const isPastYear = state.year < new Date().getFullYear();
   const rows = state.peopleNames
     .map((name) => {
       const allowance = allowanceByName.get(name);
@@ -603,7 +604,7 @@ function renderPeopleSummary() {
         <td>${additional}</td>
         <td>${total}</td>
         <td>${planned}</td>
-        <td class="${remainingClass}">${remaining}</td>
+        ${isPastYear ? "" : `<td class="${remainingClass}">${remaining}</td>`}
       </tr>`;
     })
     .join("");
@@ -618,7 +619,7 @@ function renderPeopleSummary() {
           <th>Additional</th>
           <th>Total Allowance</th>
           <th>Planned (${state.year})</th>
-          <th>Remaining (${state.year})</th>
+          ${isPastYear ? "" : `<th>Remaining (${state.year})</th>`}
         </tr>
       </thead>
       <tbody>${rows}</tbody>
@@ -627,7 +628,7 @@ function renderPeopleSummary() {
 
   renderPeopleCheckboxes();
 
-  const summaryChips = state.peopleNames
+  const summaryChips = isPastYear ? "" : state.peopleNames
     .map((name) => {
       const allowance = allowanceByName.get(name);
       const standard = allowance ? allowance.standard : 0;
@@ -873,6 +874,10 @@ function renderHolidayHeatmap() {
 
 function renderHolidayBurndown() {
   if (!el.holidayBurndown) return;
+  if (state.year < new Date().getFullYear()) {
+    el.holidayBurndown.innerHTML = "";
+    return;
+  }
   const year = state.year;
   const peopleNames = state.peopleNames;
 
@@ -1400,7 +1405,11 @@ function renderCalendar() {
 }
 
 function render() {
-  if (el.hideCompleted) el.hideCompleted.checked = state.hideCompleted;
+  if (el.hideCompleted) {
+    const isPast = state.year < new Date().getFullYear();
+    el.hideCompleted.parentElement.style.display = isPast ? "none" : "";
+    el.hideCompleted.checked = state.hideCompleted;
+  }
   renderYearSelect();
   renderNextBigHolidayHero();
   renderPeopleSummary();
