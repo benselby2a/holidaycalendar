@@ -105,7 +105,7 @@ const state = {
 
 const HOLIDAY_STATUSES = ["planning", "booked", "happened"];
 const BASE_YEAR = new Date().getFullYear();
-const YEAR_MIN = BASE_YEAR - 2;
+const YEAR_MIN = 2015;
 const YEAR_MAX = BASE_YEAR + 3;
 const RECOGNIZED_COUNTRIES = [
   "Afghanistan","Albania","Algeria","Andorra","Angola","Antigua and Barbuda","Argentina","Armenia","Australia","Austria",
