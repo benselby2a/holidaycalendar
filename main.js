@@ -753,7 +753,8 @@ function renderHolidayHeatmap() {
   for (let v = 0; v <= niceMax + 1e-9; v += step) ticks.push(Math.round(v * 100) / 100);
 
   const todayDate = parseDate(todayIsoLocal());
-  const isPastMonth = (idx) => new Date(year, idx + 1, 0) < todayDate;
+  const isPastYear = year < new Date().getFullYear();
+  const isPastMonth = (idx) => !isPastYear && new Date(year, idx + 1, 0) < todayDate;
 
   const monthShort = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   const monthFull = ["January","February","March","April","May","June","July","August","September","October","November","December"];
