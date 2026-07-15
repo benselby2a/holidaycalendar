@@ -615,7 +615,9 @@ function calcTripLength(startDateText, endDateText, startHalf = "am", endHalf = 
 }
 
 function displayStatus(holiday) {
-  if (holiday.endDate < todayIsoLocal()) return "completed";
+  const today = todayIsoLocal();
+  if (holiday.endDate < today) return "completed";
+  if (holiday.startDate <= today) return "in-progress";
   const normalized = String(holiday.status || "").toLowerCase();
   if (normalized === "ideation") return "planning";
   return HOLIDAY_STATUSES.includes(normalized) ? normalized : "planning";

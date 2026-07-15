@@ -752,6 +752,11 @@ tr:hover { background: var(--table-hover); }
   color: var(--chip-completed-text);
 }
 
+.status-in-progress {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
 .past-trip-row td {
   background: inherit;
   color: inherit;
@@ -1365,6 +1370,7 @@ tr:hover { background: var(--table-hover); }
 .day.day-status-planning { background: var(--chip-plan-bg); }
 .day.day-status-booked { background: var(--chip-booked-bg); }
 .day.day-status-completed { background: var(--chip-completed-bg); }
+.day.day-status-in-progress { background: var(--accent-soft); }
 .day.long-weekend { box-shadow: inset 0 0 0 2px var(--chip-ideation-bg); }
 
 .day .mini {
@@ -1415,6 +1421,11 @@ tr:hover { background: var(--table-hover); }
 .trip-pill.status-booked {
   background: var(--chip-booked-bg);
   color: var(--chip-booked-text);
+}
+
+.trip-pill.status-in-progress {
+  background: var(--accent-soft);
+  color: var(--accent);
 }
 
 .trip-pill.completed {
