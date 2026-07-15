@@ -1122,6 +1122,14 @@ tr:hover { background: var(--table-hover); }
 
 .map-country:hover { stroke: var(--line-strong); stroke-width: 1; }
 
+.map-country-marker {
+  stroke: var(--card);
+  stroke-width: 0.4;
+  cursor: pointer;
+}
+
+.map-country-marker:hover { stroke: var(--line-strong); stroke-width: 0.8; }
+
 .country-map-tooltip {
   white-space: normal;
   max-width: 220px;
