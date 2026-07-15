@@ -1579,26 +1579,13 @@ function renderCountryMap() {
     return cats;
   };
 
-  // "Been there before, and due to go again" is common and meaningful enough to
-  // get its own solid color rather than a stripe pattern; every other multi-
-  // category combination still gets a hatched fill combining every bucket it's in.
+  // A country in more than one bucket at once (visited before AND due again,
+  // already visited again AND due for a further trip, etc.) gets a single
+  // "straddling" color rather than trying to represent every bucket at once.
   const effectiveCategory = (cats) => {
     if (!cats.length) return null;
     if (cats.length === 1) return cats[0];
-    if (cats.length === 2 && cats.includes("past") && cats.includes("due")) return "returning";
-    return `hatch-${cats.join("-")}`;
-  };
-
-  // Label text always needs one solid color. "returning" already is one; for the
-  // remaining (still-hatched) combinations, pick with the same current > due >
-  // past priority the map used before hatching existed.
-  const dominantCategory = (cats) => {
-    const effective = effectiveCategory(cats);
-    if (effective && !effective.startsWith("hatch-")) return effective;
-    if (cats.includes("current")) return "current";
-    if (cats.includes("due")) return "due";
-    if (cats.includes("past")) return "past";
-    return null;
+    return "returning";
   };
 
   // The polygon geometry never changes, so build the (large) SVG markup once and, on
@@ -1625,33 +1612,12 @@ function renderCountryMap() {
         <p class="country-map-summary"></p>
         <div class="country-map-svg-wrap">
           <svg class="country-map-svg" viewBox="0 0 ${WORLD_MAP_W} ${WORLD_MAP_H}" preserveAspectRatio="xMidYMid meet" role="img">
-            <defs>
-              <pattern id="map-hatch-past-current" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                <rect width="8" height="8" fill="var(--map-past)"></rect>
-                <rect width="4" height="8" fill="var(--map-current)"></rect>
-              </pattern>
-              <pattern id="map-hatch-current-due" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                <rect width="8" height="8" fill="var(--map-current)"></rect>
-                <rect width="4" height="8" fill="var(--map-due)"></rect>
-              </pattern>
-              <pattern id="map-hatch-past-current-due" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                <rect width="12" height="12" fill="var(--map-past)"></rect>
-                <rect width="4" height="12" fill="var(--map-current)"></rect>
-                <rect x="8" width="4" height="12" fill="var(--map-due)"></rect>
-              </pattern>
-            </defs>
             ${pathsMarkup}
             <g class="map-labels"></g>
           </svg>
           <div class="country-map-tooltip" hidden></div>
         </div>
-        <div class="heatmap-legend">
-          <span><span class="legend-swatch map-legend-past"></span>Visited (past years)</span>
-          <span><span class="legend-swatch map-legend-current"></span>Visited this year</span>
-          <span><span class="legend-swatch map-legend-due"></span>Due to be visited</span>
-          <span><span class="legend-swatch map-legend-returning"></span>Been before, going again</span>
-          <span><span class="legend-swatch map-legend-hatch"></span>Straddles multiple</span>
-        </div>
+        <div class="heatmap-legend country-map-legend"></div>
       </div>
     `;
     svg = el.countryMap.querySelector(".country-map-svg");
@@ -1698,19 +1664,37 @@ function renderCountryMap() {
   const labelsGroup = svg.querySelector(".map-labels");
   if (labelsGroup) {
     const candidates = state.worldMapFeatures
-      .map((f) => ({ ...f, category: dominantCategory(categoriesFor(statusByCountry.get(f.name))) }))
+      .map((f) => ({ ...f, category: effectiveCategory(categoriesFor(statusByCountry.get(f.name))) }))
       .filter((f) => f.labelPos && f.category);
     placeMapLabels(labelsGroup, candidates);
   }
 
   // Tally from the matched countries directly rather than the DOM, since a tiny
-  // country contributes two elements (path + marker) to the same count.
+  // country contributes two elements (path + marker) to the same count. Also
+  // track which colors are actually on the map right now, so the legend only
+  // lists entries that apply instead of always showing all of them.
   let visitedCount = 0;
   let dueCount = 0;
+  const categoriesPresent = new Set();
   for (const entry of statusByCountry.values()) {
     const cats = categoriesFor(entry);
     if (cats.includes("past") || cats.includes("current")) visitedCount += 1;
     if (cats.includes("due")) dueCount += 1;
+    const effective = effectiveCategory(cats);
+    if (effective) categoriesPresent.add(effective);
+  }
+
+  const legendEl = el.countryMap.querySelector(".country-map-legend");
+  if (legendEl) {
+    const LEGEND_ITEMS = [
+      { key: "past", cls: "map-legend-past", label: "Visited (past years)" },
+      { key: "current", cls: "map-legend-current", label: "Visited this year" },
+      { key: "due", cls: "map-legend-due", label: "Due to be visited" },
+      { key: "returning", cls: "map-legend-returning", label: "Straddles multiple" },
+    ];
+    legendEl.innerHTML = LEGEND_ITEMS.filter((item) => categoriesPresent.has(item.key))
+      .map((item) => `<span><span class="legend-swatch ${item.cls}"></span>${item.label}</span>`)
+      .join("");
   }
 
   const summaryEl = el.countryMap.querySelector(".country-map-summary");
