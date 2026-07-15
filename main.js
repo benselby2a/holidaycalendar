@@ -1566,9 +1566,10 @@ function renderCountryMap() {
     statusByCountry.set(mapName, entry);
   }
 
-  // Countries with trips that fall into more than one bucket (e.g. visited in a past
-  // year AND due again this year) get a hatched fill combining every bucket they're
-  // in, rather than picking one winner.
+  // Which of past/current/due buckets a country's trips fall into — a country can
+  // be in more than one at once (e.g. visited in a past year AND already visited
+  // again this year). See effectiveCategory() below for how multiple buckets
+  // resolve to an actual fill.
   const categoriesFor = (entry) => {
     if (!entry) return [];
     const cats = [];
@@ -1578,10 +1579,22 @@ function renderCountryMap() {
     return cats;
   };
 
-  // For a country straddling multiple categories, the fill goes hatched (all of
-  // them at once), but label text needs one solid color — pick the same
-  // current > due > past priority the map used before hatching existed.
+  // "Been there before, and due to go again" is common and meaningful enough to
+  // get its own solid color rather than a stripe pattern; every other multi-
+  // category combination still gets a hatched fill combining every bucket it's in.
+  const effectiveCategory = (cats) => {
+    if (!cats.length) return null;
+    if (cats.length === 1) return cats[0];
+    if (cats.length === 2 && cats.includes("past") && cats.includes("due")) return "returning";
+    return `hatch-${cats.join("-")}`;
+  };
+
+  // Label text always needs one solid color. "returning" already is one; for the
+  // remaining (still-hatched) combinations, pick with the same current > due >
+  // past priority the map used before hatching existed.
   const dominantCategory = (cats) => {
+    const effective = effectiveCategory(cats);
+    if (effective && !effective.startsWith("hatch-")) return effective;
     if (cats.includes("current")) return "current";
     if (cats.includes("due")) return "due";
     if (cats.includes("past")) return "past";
@@ -1617,10 +1630,6 @@ function renderCountryMap() {
                 <rect width="8" height="8" fill="var(--map-past)"></rect>
                 <rect width="4" height="8" fill="var(--map-current)"></rect>
               </pattern>
-              <pattern id="map-hatch-past-due" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-                <rect width="8" height="8" fill="var(--map-past)"></rect>
-                <rect width="4" height="8" fill="var(--map-due)"></rect>
-              </pattern>
               <pattern id="map-hatch-current-due" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
                 <rect width="8" height="8" fill="var(--map-current)"></rect>
                 <rect width="4" height="8" fill="var(--map-due)"></rect>
@@ -1640,6 +1649,7 @@ function renderCountryMap() {
           <span><span class="legend-swatch map-legend-past"></span>Visited (past years)</span>
           <span><span class="legend-swatch map-legend-current"></span>Visited this year</span>
           <span><span class="legend-swatch map-legend-due"></span>Due to be visited</span>
+          <span><span class="legend-swatch map-legend-returning"></span>Been before, going again</span>
           <span><span class="legend-swatch map-legend-hatch"></span>Straddles multiple</span>
         </div>
       </div>
@@ -1679,8 +1689,8 @@ function renderCountryMap() {
     // data-name — keep the marker class distinct from the (mutually exclusive)
     // category classes rather than deriving it from the element type each time.
     let cls = node.dataset.marker ? "map-country map-country-marker" : "map-country";
-    if (cats.length === 1) cls += ` map-country-${cats[0]}`;
-    else if (cats.length > 1) cls += ` map-country-hatch-${cats.join("-")}`;
+    const effective = effectiveCategory(cats);
+    if (effective) cls += ` map-country-${effective}`;
     node.setAttribute("class", cls);
     node.dataset.summary = entry ? entry.trips.join(", ") : "";
   });
