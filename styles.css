@@ -568,6 +568,29 @@ button.danger {
   border-radius: 8px;
 }
 
+/* ── Page loading overlay ──────────── */
+
+.page-loading-overlay {
+  position: fixed;
+  inset: 0;
+  background: var(--modal-backdrop);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 500;
+}
+
+.page-loading-overlay.hidden { display: none; }
+
+.page-spinner {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, 0.25);
+  border-top-color: #ffffff;
+  animation: spin 0.8s linear infinite;
+}
+
 /* ── Modal ─────────────────────────── */
 
 .modal {
@@ -1082,10 +1105,10 @@ tr:hover { background: var(--table-hover); }
   border-radius: 50%;
   border: 3px solid var(--line);
   border-top-color: var(--accent);
-  animation: map-spin 0.8s linear infinite;
+  animation: spin 0.8s linear infinite;
 }
 
-@keyframes map-spin {
+@keyframes spin {
   to { transform: rotate(360deg); }
 }
 
