@@ -34,3 +34,4 @@ The values are stored in your browser local storage and used by the app to read/
 
 - Current RLS policies in `supabase.sql` allow all users with the anon key to read/write.
 - For private/shared household use this is usually OK, but for stronger security add auth and user-specific policies.
+- `data/world-50m.json` is Natural Earth country boundary data (via the `world-atlas` npm package, ISC-licensed) used to draw the Countries Visited map. It's bundled locally so the map works without any external CDN calls.
