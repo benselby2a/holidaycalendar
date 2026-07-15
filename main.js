@@ -1357,7 +1357,21 @@ function geometryToPath(arcs, geometry, countryName, exaggerate) {
 // that render too small to see (small island nations, microstates) so a fallback
 // marker dot can be placed at their center.
 function geometryFootprint(arcs, geometry, countryName) {
+  // Full bounding box across every kept point, used only to size-tier the country
+  // (tiny/small/normal). A country that itself wraps the antimeridian (Russia) or
+  // has scattered pieces on both sides of it (the US's Aleutians) measures an
+  // inflated width here, but that only ever pushes it toward "not small" — it
+  // can't produce a false "tiny", so this half doesn't need antimeridian handling.
   let lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
+
+  // Per-polygon-component longitudes, to anchor the label/marker at the center of
+  // the *largest single landmass* rather than averaging every point across every
+  // component. Averaging across components is what breaks down for split-apart
+  // geometry: the US's Aleutian islands sit past the dateline near +173°..+180°
+  // while the mainland sits at -125°..-65°, so a naive min/max average lands the
+  // centroid near 0° longitude — the Atlantic, off the coast of Europe.
+  const components = [];
+  let currentComponent = null;
   const visitRing = (ring) => {
     for (const idx of ring) {
       for (const [lon, lat] of arcCoords(arcs, idx)) {
@@ -1365,16 +1379,41 @@ function geometryFootprint(arcs, geometry, countryName) {
         if (lon > lonMax) lonMax = lon;
         if (lat < latMin) latMin = lat;
         if (lat > latMax) latMax = lat;
+        currentComponent.lons.push(lon);
+        if (lat < currentComponent.latMin) currentComponent.latMin = lat;
+        if (lat > currentComponent.latMax) currentComponent.latMax = lat;
       }
     }
   };
+  const visitComponent = (rings) => {
+    currentComponent = { lons: [], latMin: Infinity, latMax: -Infinity };
+    rings.forEach(visitRing);
+    if (currentComponent.lons.length) components.push(currentComponent);
+  };
+
   if (geometry.type === "Polygon") {
-    geometry.arcs.forEach(visitRing);
+    visitComponent(geometry.arcs);
   } else if (geometry.type === "MultiPolygon") {
-    geometry.arcs.filter((poly) => keepMapPolygon(arcs, poly, countryName)).forEach((poly) => poly.forEach(visitRing));
+    geometry.arcs.filter((poly) => keepMapPolygon(arcs, poly, countryName)).forEach((poly) => visitComponent(poly));
   }
-  if (!Number.isFinite(lonMin)) return null;
-  return { lonMid: (lonMin + lonMax) / 2, latMid: (latMin + latMax) / 2, widthDeg: lonMax - lonMin, heightDeg: latMax - latMin };
+  if (!Number.isFinite(lonMin) || !components.length) return null;
+
+  const main = components.reduce((a, b) => (b.lons.length > a.lons.length ? b : a));
+  const mainLonMin = Math.min(...main.lons);
+  const mainLonMax = Math.max(...main.lons);
+  // A single component can itself straddle the antimeridian (Russia's mainland
+  // runs from the Baltic across to Alaska in one ring) — compare the normal
+  // bounding width against the width after shifting negative longitudes by 360°
+  // and keep whichever framing is narrower, which correctly identifies the true
+  // extent instead of measuring the gap across the ±180° seam as if it were land.
+  const shifted = main.lons.map((lon) => (lon < 0 ? lon + 360 : lon));
+  const shiftedMin = Math.min(...shifted);
+  const shiftedMax = Math.max(...shifted);
+  const useShifted = shiftedMax - shiftedMin < mainLonMax - mainLonMin;
+  let lonMid = useShifted ? (shiftedMin + shiftedMax) / 2 : (mainLonMin + mainLonMax) / 2;
+  if (lonMid > 180) lonMid -= 360;
+
+  return { lonMid, latMid: (main.latMin + main.latMax) / 2, widthDeg: lonMax - lonMin, heightDeg: latMax - latMin };
 }
 
 async function loadWorldMap() {
