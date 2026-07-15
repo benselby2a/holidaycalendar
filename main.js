@@ -135,6 +135,24 @@ const WORLD_MAP_URL = "./data/world-50m.json";
 const WORLD_MAP_W = 960;
 const WORLD_MAP_H = 500;
 
+// The boundary dataset draws sovereign-state territory as one feature, so some
+// countries' overseas departments/territories (geographically on another
+// continent entirely) are bundled into the same polygon as the mainland — e.g.
+// "France" includes French Guiana, Martinique, Guadeloupe, Mayotte and Réunion.
+// That makes a trip to mainland France light up South America/the Caribbean too,
+// so drop those far-flung pieces by bounding box, keyed by the map's country name.
+const MAP_TERRITORY_EXCLUSIONS = {
+  France: [
+    { lonMin: -56, lonMax: -50, latMin: 0, latMax: 7 },      // French Guiana
+    { lonMin: -63, lonMax: -60, latMin: 14, latMax: 17 },    // Martinique & Guadeloupe
+    { lonMin: 44, lonMax: 46, latMin: -14, latMax: -12 },    // Mayotte
+    { lonMin: 54, lonMax: 57, latMin: -22, latMax: -20 },    // Réunion
+  ],
+  Netherlands: [
+    { lonMin: -71, lonMax: -62, latMin: 11, latMax: 18.5 },  // Aruba, Curaçao, Bonaire, Sint Maarten, Saba, Sint Eustatius
+  ],
+};
+
 // Country-name matching between RECOGNIZED_COUNTRIES and the boundary dataset's own
 // naming (which favours abbreviations, e.g. "St. Kitts and Nevis", "Dem. Rep. Congo").
 // Expand common abbreviations, then fuzzy-match on normalized token overlap so we don't
@@ -289,12 +307,26 @@ function inferCountryFromLocation(locationText) {
 }
 
 window.addEventListener("error", (evt) => {
+  // A bare "Script error." with no filename/line is the browser's opaque placeholder
+  // for an exception thrown inside a cross-origin script (e.g. the Supabase CDN
+  // bundle) — it carries zero actionable detail and is often just network flakiness
+  // (poor wifi, a plane, etc.) rather than a real app bug. Log it, but don't alarm
+  // the user with a toast that tells them nothing they can act on.
+  const isOpaqueCrossOriginError = evt?.message === "Script error." && !evt?.filename && !evt?.lineno;
+  if (isOpaqueCrossOriginError) {
+    console.warn("[MHP] Suppressed opaque cross-origin script error (likely a network hiccup):", evt);
+    return;
+  }
   const msg = evt?.message || "Unknown runtime error";
   setStatusMessage(`App error: ${msg}`, true);
 });
 
 window.addEventListener("unhandledrejection", (evt) => {
-  const msg = evt?.reason?.message || String(evt?.reason || "Unknown promise rejection");
+  const msg = evt?.reason?.message || String(evt?.reason || "");
+  if (!msg) {
+    console.warn("[MHP] Suppressed uninformative promise rejection (likely a network hiccup):", evt);
+    return;
+  }
   setStatusMessage(`App error: ${msg}`, true);
 });
 
@@ -1227,24 +1259,46 @@ function ringToPath(arcs, ringArcIndices) {
     .join(" ");
 }
 
-function geometryToPath(arcs, geometry) {
+function geometryToPath(arcs, geometry, countryName) {
   if (geometry.type === "Polygon") {
     return geometry.arcs.map((ring) => ringToPath(arcs, ring)).join(" ");
   }
   if (geometry.type === "MultiPolygon") {
-    return geometry.arcs.map((poly) => poly.map((ring) => ringToPath(arcs, ring)).join(" ")).join(" ");
+    const zones = MAP_TERRITORY_EXCLUSIONS[countryName];
+    const keepPolygon = (poly) => {
+      if (!zones) return true;
+      // Sample the first point of the polygon's outer ring — good enough to place
+      // a disjoint overseas piece without walking every point in it.
+      const [lon, lat] = arcCoords(arcs, poly[0][0])[0];
+      return !zones.some((z) => lon >= z.lonMin && lon <= z.lonMax && lat >= z.latMin && lat <= z.latMax);
+    };
+    return geometry.arcs
+      .filter(keepPolygon)
+      .map((poly) => poly.map((ring) => ringToPath(arcs, ring)).join(" "))
+      .join(" ");
   }
   return "";
 }
 
 async function loadWorldMap() {
-  const res = await fetch(WORLD_MAP_URL);
+  // On a slow/flaky connection (e.g. in-flight wifi) a hung fetch would otherwise
+  // leave the panel stuck on "Loading map…" forever with no feedback.
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  let res;
+  try {
+    res = await fetch(WORLD_MAP_URL, { signal: controller.signal });
+  } catch (err) {
+    throw new Error(err?.name === "AbortError" ? "Timed out loading the world map" : "Network error loading the world map");
+  } finally {
+    clearTimeout(timeout);
+  }
   if (!res.ok) throw new Error(`Could not load world map (${res.status})`);
   const topology = await res.json();
   const arcs = decodeTopoJsonArcs(topology);
   const geometries = topology.objects?.countries?.geometries || [];
   return geometries
-    .map((geometry) => ({ name: geometry.properties?.name || "", d: geometryToPath(arcs, geometry) }))
+    .map((geometry) => ({ name: geometry.properties?.name || "", d: geometryToPath(arcs, geometry, geometry.properties?.name || "") }))
     .filter((f) => f.name && f.d);
 }
 
