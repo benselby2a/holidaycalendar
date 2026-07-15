@@ -1579,13 +1579,17 @@ function renderCountryMap() {
     return cats;
   };
 
-  // A country in more than one bucket at once (visited before AND due again,
-  // already visited again AND due for a further trip, etc.) gets a single
-  // "straddling" color rather than trying to represent every bucket at once.
+  // A trip that's already happened (or is happening) this year always wins —
+  // the country is simply "visited this year", regardless of any past history
+  // or further trips still due. Purple is reserved for the one case where
+  // nothing has happened yet this year but there's a future trip due to a
+  // country already visited in some past year — i.e. genuinely "revisiting".
   const effectiveCategory = (cats) => {
     if (!cats.length) return null;
-    if (cats.length === 1) return cats[0];
-    return "returning";
+    if (cats.includes("current")) return "current";
+    if (cats.includes("past") && cats.includes("due")) return "returning";
+    if (cats.includes("due")) return "due";
+    return "past";
   };
 
   // The polygon geometry never changes, so build the (large) SVG markup once and, on
