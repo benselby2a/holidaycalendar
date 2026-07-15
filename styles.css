@@ -1115,6 +1115,11 @@ tr:hover { background: var(--table-hover); }
 .map-country-current { fill: var(--map-current); cursor: pointer; }
 .map-country-due { fill: var(--map-due); cursor: pointer; }
 
+.map-country-hatch-past-current { fill: url(#map-hatch-past-current); cursor: pointer; }
+.map-country-hatch-past-due { fill: url(#map-hatch-past-due); cursor: pointer; }
+.map-country-hatch-current-due { fill: url(#map-hatch-current-due); cursor: pointer; }
+.map-country-hatch-past-current-due { fill: url(#map-hatch-past-current-due); cursor: pointer; }
+
 .map-country:hover { stroke: var(--line-strong); stroke-width: 1; }
 
 .country-map-tooltip {
@@ -1125,6 +1130,9 @@ tr:hover { background: var(--table-hover); }
 .map-legend-past { background: var(--map-past); }
 .map-legend-current { background: var(--map-current); }
 .map-legend-due { background: var(--map-due); }
+.map-legend-hatch {
+  background-image: repeating-linear-gradient(45deg, var(--map-current) 0 3px, var(--map-due) 3px 6px);
+}
 
 /* ── Holiday todos ─────────────────── */
 
