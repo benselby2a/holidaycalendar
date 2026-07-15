@@ -2079,19 +2079,21 @@ function openAddHolidayModal() {
     el.holidayForm.dataset.endDateManual = "false";
     el.holidayForm.dataset.countryManual = "false";
     el.holidayForm.dataset.statusManual = "false";
+    // Default the trip dates into whichever year is currently selected — today's
+    // date if that's the current year (the common case), otherwise the middle of
+    // the selected year, so a trip added while browsing 2024 doesn't silently
+    // default to blank (or worse, today's real-world date).
     const currentYear = new Date().getFullYear();
-    if (state.year > currentYear) {
-      const midYearIso = `${state.year}-07-01`;
-      if (el.holidayForm.elements.startDate) el.holidayForm.elements.startDate.value = midYearIso;
-      if (el.holidayForm.elements.endDate) el.holidayForm.elements.endDate.value = midYearIso;
-      const startHalf = el.holidayForm.elements.startHalf?.value || "am";
-      const endHalf = el.holidayForm.elements.endHalf?.value || "pm";
-      if (el.holidayForm.elements.tripLength) {
-        el.holidayForm.elements.tripLength.value = String(calcTripLength(midYearIso, midYearIso, startHalf, endHalf));
-      }
-      if (el.holidayForm.elements.daysOffWork) {
-        el.holidayForm.elements.daysOffWork.value = String(businessDaysOffWork(midYearIso, midYearIso, startHalf, endHalf));
-      }
+    const defaultIso = state.year === currentYear ? todayIsoLocal() : `${state.year}-07-01`;
+    if (el.holidayForm.elements.startDate) el.holidayForm.elements.startDate.value = defaultIso;
+    if (el.holidayForm.elements.endDate) el.holidayForm.elements.endDate.value = defaultIso;
+    const startHalf = el.holidayForm.elements.startHalf?.value || "am";
+    const endHalf = el.holidayForm.elements.endHalf?.value || "pm";
+    if (el.holidayForm.elements.tripLength) {
+      el.holidayForm.elements.tripLength.value = String(calcTripLength(defaultIso, defaultIso, startHalf, endHalf));
+    }
+    if (el.holidayForm.elements.daysOffWork) {
+      el.holidayForm.elements.daysOffWork.value = String(businessDaysOffWork(defaultIso, defaultIso, startHalf, endHalf));
     }
     setHolidayFormStatusDefault();
   }
