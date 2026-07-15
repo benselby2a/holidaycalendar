@@ -1274,7 +1274,11 @@ function renderCountryMap() {
   }
 
   const year = state.year;
-  // matched map country name -> { past, current, future, trips }
+  const today = todayIsoLocal();
+  // matched map country name -> { past, current, due, trips }
+  // "current" = already-completed trips in the selected year; "due" = trips still
+  // upcoming in the selected year. Trips in years after the selected year aren't
+  // categorized — "due" only reflects what's due within the year being viewed.
   const statusByCountry = new Map();
   for (const h of state.holidays) {
     const country = String(h.country || "").trim();
@@ -1282,10 +1286,12 @@ function renderCountryMap() {
     const mapName = matchCountryToMapName(country, state.worldMapNameIndex);
     if (!mapName) continue;
     const hYear = holidayYear(h);
-    const entry = statusByCountry.get(mapName) || { past: false, current: false, future: false, trips: [] };
-    if (hYear === year) entry.current = true;
-    else if (hYear < year) entry.past = true;
-    else entry.future = true;
+    const entry = statusByCountry.get(mapName) || { past: false, current: false, due: false, trips: [] };
+    if (hYear < year) entry.past = true;
+    else if (hYear === year) {
+      if (h.endDate < today) entry.current = true;
+      else entry.due = true;
+    }
     entry.trips.push(`${h.location || country} (${hYear})`);
     statusByCountry.set(mapName, entry);
   }
@@ -1293,8 +1299,8 @@ function renderCountryMap() {
   const categoryFor = (entry) => {
     if (!entry) return null;
     if (entry.current) return "current";
+    if (entry.due) return "due";
     if (entry.past) return "past";
-    if (entry.future) return "due";
     return null;
   };
 
