@@ -2652,7 +2652,14 @@ function setAuthedUI(authed) {
   const gate = document.getElementById("auth-gate");
   const app = document.getElementById("app-main");
   if (gate) gate.classList.toggle("hidden", authed);
-  if (app) app.classList.toggle("hidden", !authed);
+  // Only ever hide app-main here (on sign-out/no session) — revealing it is
+  // deferred until data has actually finished loading, via revealApp(), so we
+  // don't flash the empty unpopulated shell while the DB call is in flight.
+  if (!authed && app) app.classList.add("hidden");
+}
+
+function revealApp() {
+  document.getElementById("app-main")?.classList.remove("hidden");
 }
 
 function showUserInfo(session) {
@@ -2704,6 +2711,10 @@ document.getElementById("sign-out-btn")?.addEventListener("click", async () => {
       render();
     } catch (err) {
       console.error("[MHP] loadAppData error:", err);
+    } finally {
+      // Reveal the app whether the load succeeded or failed — otherwise a
+      // failed DB call leaves the user stuck behind the loading overlay forever.
+      revealApp();
     }
   }
 
