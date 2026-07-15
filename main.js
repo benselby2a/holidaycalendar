@@ -3,7 +3,6 @@ const SUPABASE_ANON_KEY = "sb_publishable_xlNQ_QudJNUlMLjWpr0iJA_YgO87tox";
 const HIDE_COMPLETED_STORAGE_KEY = "holidayPlanner.hideCompletedTrips";
 const SELECTED_YEAR_STORAGE_KEY = "holidayPlanner.selectedYear";
 const HEATMAP_FREE_STORAGE_KEY = "holidayPlanner.heatmapShowFree";
-const MAP_LABELS_STORAGE_KEY = "holidayPlanner.mapShowLabels";
 let statusToastTimer = null;
 const inHub = window !== window.parent;
 
@@ -93,22 +92,6 @@ function writeHeatmapFreePref(value) {
   }
 }
 
-function readMapLabelsPref() {
-  try {
-    return window.localStorage.getItem(MAP_LABELS_STORAGE_KEY) === "1";
-  } catch (_) {
-    return false;
-  }
-}
-
-function writeMapLabelsPref(value) {
-  try {
-    window.localStorage.setItem(MAP_LABELS_STORAGE_KEY, value ? "1" : "0");
-  } catch (_) {
-    // Ignore localStorage access issues.
-  }
-}
-
 const state = {
   people: [],
   peopleNames: [],
@@ -117,7 +100,6 @@ const state = {
   year: readSelectedYearPref() ?? defaultPlannerYear(),
   hideCompleted: readHideCompletedPref(),
   showHeatmapFree: readHeatmapFreePref(),
-  showMapLabels: readMapLabelsPref(),
   view: "table",
   worldMapFeatures: null,
   worldMapNameIndex: null,
@@ -1651,10 +1633,6 @@ function renderCountryMap() {
           <span><span class="legend-swatch map-legend-due"></span>Due to be visited</span>
           <span><span class="legend-swatch map-legend-hatch"></span>Straddles multiple</span>
         </div>
-        <label class="heatmap-values-toggle">
-          <input type="checkbox" id="map-labels-toggle" ${state.showMapLabels ? "checked" : ""} />
-          <span>Show labels on visited countries</span>
-        </label>
       </div>
     `;
     svg = el.countryMap.querySelector(".country-map-svg");
@@ -1682,13 +1660,6 @@ function renderCountryMap() {
     svg.addEventListener("pointermove", showTip);
     svg.addEventListener("pointerdown", showTip);
     svg.addEventListener("pointerleave", () => { tip.hidden = true; });
-
-    const labelsToggle = document.getElementById("map-labels-toggle");
-    labelsToggle?.addEventListener("change", () => {
-      state.showMapLabels = labelsToggle.checked;
-      writeMapLabelsPref(state.showMapLabels);
-      renderCountryMap();
-    });
   }
 
   svg.setAttribute("aria-label", `Map of countries visited up to ${year}`);
@@ -1707,14 +1678,10 @@ function renderCountryMap() {
 
   const labelsGroup = svg.querySelector(".map-labels");
   if (labelsGroup) {
-    if (!state.showMapLabels) {
-      labelsGroup.innerHTML = "";
-    } else {
-      const candidates = state.worldMapFeatures
-        .map((f) => ({ ...f, category: dominantCategory(categoriesFor(statusByCountry.get(f.name))) }))
-        .filter((f) => f.labelPos && f.category);
-      placeMapLabels(labelsGroup, candidates);
-    }
+    const candidates = state.worldMapFeatures
+      .map((f) => ({ ...f, category: dominantCategory(categoriesFor(statusByCountry.get(f.name))) }))
+      .filter((f) => f.labelPos && f.category);
+    placeMapLabels(labelsGroup, candidates);
   }
 
   // Tally from the matched countries directly rather than the DOM, since a tiny
