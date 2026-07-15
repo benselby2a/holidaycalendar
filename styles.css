@@ -1063,6 +1063,25 @@ tr:hover { background: var(--table-hover); }
 
 /* ── Country map ───────────────────── */
 
+.map-panel > summary {
+  cursor: pointer;
+  list-style: none;
+}
+
+.map-panel > summary::marker,
+.map-panel > summary::-webkit-details-marker {
+  display: none;
+}
+
+.map-toggle-icon {
+  flex: 0 0 auto;
+  color: var(--muted);
+  font-size: 0.9rem;
+  transition: transform 0.15s ease;
+}
+
+.map-panel[open] .map-toggle-icon { transform: rotate(180deg); }
+
 .country-map-wrap { margin-top: 12px; }
 
 .map-loading {

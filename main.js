@@ -219,6 +219,7 @@ const el = {
   holidayBurndown: document.getElementById("holiday-burndown"),
   holidayTodos: document.getElementById("holiday-todos"),
   countryMap: document.getElementById("country-map"),
+  countryMapPanel: document.getElementById("country-map-panel"),
   nextBigHolidayHero: document.getElementById("next-big-holiday-hero"),
   openAllowance: document.getElementById("open-allowance"),
   allowanceModal: document.getElementById("allowance-modal"),
@@ -1666,7 +1667,9 @@ function render() {
   renderHolidayHeatmap();
   renderHolidayBurndown();
   renderHolidayTodos();
-  renderCountryMap();
+  // The map section is collapsed by default; skip the (740KB) fetch and SVG build
+  // until it's actually opened, then keep it in sync with later renders.
+  if (state.worldMapFeatures || el.countryMapPanel?.open) renderCountryMap();
   renderHolidayTable();
   renderCalendar();
 }
@@ -2292,6 +2295,9 @@ if (el.hideCompleted) el.hideCompleted.addEventListener("change", (e) => {
 if (el.yearSelect) el.yearSelect.addEventListener("change", async (e) => {
   await setYear(e.target.value);
   renderBankHolidayList();
+});
+if (el.countryMapPanel) el.countryMapPanel.addEventListener("toggle", () => {
+  if (el.countryMapPanel.open) renderCountryMap();
 });
 
 function setAuthedUI(authed) {

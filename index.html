@@ -73,13 +73,6 @@
         <div id="holiday-todos"></div>
       </section>
 
-      <section class="panel">
-        <div class="panel-head">
-          <h2>Countries Visited</h2>
-        </div>
-        <div id="country-map"></div>
-      </section>
-
       <section class="panel" aria-labelledby="views-heading">
         <div class="panel-head">
           <div class="planner-heading">
@@ -103,6 +96,14 @@
           <div id="calendar-grid" class="calendar-grid"></div>
         </div>
       </section>
+
+      <details id="country-map-panel" class="panel map-panel">
+        <summary class="panel-head map-summary">
+          <h2>Countries Visited</h2>
+          <span class="map-toggle-icon" aria-hidden="true">▾</span>
+        </summary>
+        <div id="country-map"></div>
+      </details>
 
       <div class="utility-actions">
         <button id="open-people" class="secondary-utility-btn" type="button">People Setup</button>
@@ -332,6 +333,6 @@
     </template>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="main.js?v=20260715-30"></script>
+    <script src="main.js?v=20260715-31"></script>
   </body>
 </html>
