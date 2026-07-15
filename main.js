@@ -107,7 +107,7 @@ const state = {
 
 const HOLIDAY_STATUSES = ["planning", "booked", "happened"];
 const BASE_YEAR = new Date().getFullYear();
-const YEAR_MIN = 2015;
+const YEAR_MIN = 2012;
 const YEAR_MAX = BASE_YEAR + 3;
 const RECOGNIZED_COUNTRIES = [
   "Afghanistan","Albania","Algeria","Andorra","Angola","Antigua and Barbuda","Argentina","Armenia","Australia","Austria",
@@ -138,7 +138,17 @@ const WORLD_MAP_H = 500;
 // states) get a fallback marker dot placed at their center, since their actual
 // polygon can be well under a pixel wide and otherwise invisible.
 const MAP_TINY_COUNTRY_PX = 4;
-const MAP_MARKER_RADIUS = 1.8;
+const MAP_MARKER_RADIUS = 2.2;
+// Countries above the tiny threshold but still small (many island nations) get
+// their actual shape scaled up a little around its own center, so they read as
+// more than a sliver without turning into an abstract dot.
+const MAP_SMALL_COUNTRY_PX = 20;
+const MAP_SMALL_EXAGGERATION = 1.6;
+
+// Absent from the boundary dataset even at this resolution — Tuvalu's total land
+// area (~26 km²) is below what gets included at 50m. Added as a marker-only
+// "phantom" entry (no polygon) so it still gets a spot on the map.
+const MAP_PHANTOM_COUNTRIES = [{ name: "Tuvalu", lon: 179.1, lat: -8.5 }];
 
 // The boundary dataset draws sovereign-state territory as one feature, so some
 // countries' overseas departments/territories (geographically on another
@@ -169,6 +179,10 @@ const MAP_NAME_ABBREVIATIONS = {
 };
 const MAP_NAME_ALIASES = {
   "united states": "united states of america",
+  "usa": "united states of america",
+  "us": "united states of america",
+  "uk": "united kingdom",
+  "uae": "united arab emirates",
   "vatican city": "vatican",
   "north macedonia": "macedonia",
 };
@@ -242,7 +256,6 @@ const el = {
   holidayBurndown: document.getElementById("holiday-burndown"),
   holidayTodos: document.getElementById("holiday-todos"),
   countryMap: document.getElementById("country-map"),
-  countryMapPanel: document.getElementById("country-map-panel"),
   nextBigHolidayHero: document.getElementById("next-big-holiday-hero"),
   openAllowance: document.getElementById("open-allowance"),
   allowanceModal: document.getElementById("allowance-modal"),
@@ -1220,9 +1233,19 @@ function renderHolidayBurndown() {
 
 // ── World map (TopoJSON) ──────────────────────────────────────────
 
-function projectLonLat(lon, lat) {
-  const x = (lon + 180) * (WORLD_MAP_W / 360);
-  const y = (90 - lat) * (WORLD_MAP_H / 180);
+function projectPointRaw(lon, lat) {
+  return [(lon + 180) * (WORLD_MAP_W / 360), (90 - lat) * (WORLD_MAP_H / 180)];
+}
+
+// `exaggerate` (optional) scales a point outward from a fixed pixel anchor
+// ({cx, cy, factor}) — used to nudge small island nations up to a more visible
+// size without moving where they sit on the map.
+function projectLonLat(lon, lat, exaggerate) {
+  let [x, y] = projectPointRaw(lon, lat);
+  if (exaggerate) {
+    x = exaggerate.cx + (x - exaggerate.cx) * exaggerate.factor;
+    y = exaggerate.cy + (y - exaggerate.cy) * exaggerate.factor;
+  }
   return `${x.toFixed(2)},${y.toFixed(2)}`;
 }
 
@@ -1244,7 +1267,7 @@ function arcCoords(arcs, index) {
   return index < 0 ? coords.slice().reverse() : coords;
 }
 
-function ringToPath(arcs, ringArcIndices) {
+function ringToPath(arcs, ringArcIndices, exaggerate) {
   let points = [];
   ringArcIndices.forEach((idx, i) => {
     const seg = arcCoords(arcs, idx);
@@ -1266,8 +1289,8 @@ function ringToPath(arcs, ringArcIndices) {
     .filter((seg) => seg.length >= 2)
     .map((seg) => {
       const [first, ...rest] = seg;
-      const line = rest.map(([lon, lat]) => projectLonLat(lon, lat)).join("L");
-      return `M${projectLonLat(first[0], first[1])}L${line}Z`;
+      const line = rest.map(([lon, lat]) => projectLonLat(lon, lat, exaggerate)).join("L");
+      return `M${projectLonLat(first[0], first[1], exaggerate)}L${line}Z`;
     })
     .join(" ");
 }
@@ -1281,14 +1304,14 @@ function keepMapPolygon(arcs, poly, countryName) {
   return !zones.some((z) => lon >= z.lonMin && lon <= z.lonMax && lat >= z.latMin && lat <= z.latMax);
 }
 
-function geometryToPath(arcs, geometry, countryName) {
+function geometryToPath(arcs, geometry, countryName, exaggerate) {
   if (geometry.type === "Polygon") {
-    return geometry.arcs.map((ring) => ringToPath(arcs, ring)).join(" ");
+    return geometry.arcs.map((ring) => ringToPath(arcs, ring, exaggerate)).join(" ");
   }
   if (geometry.type === "MultiPolygon") {
     return geometry.arcs
       .filter((poly) => keepMapPolygon(arcs, poly, countryName))
-      .map((poly) => poly.map((ring) => ringToPath(arcs, ring)).join(" "))
+      .map((poly) => poly.map((ring) => ringToPath(arcs, ring, exaggerate)).join(" "))
       .join(" ");
   }
   return "";
@@ -1335,25 +1358,34 @@ async function loadWorldMap() {
   const topology = await res.json();
   const arcs = decodeTopoJsonArcs(topology);
   const geometries = topology.objects?.countries?.geometries || [];
-  return geometries
+  const fromGeometries = geometries
     .map((geometry) => {
       const name = geometry.properties?.name || "";
-      const d = geometryToPath(arcs, geometry, name);
       const footprint = geometryFootprint(arcs, geometry, name);
       let marker = null;
+      let exaggerate = null;
       if (footprint) {
         const widthPx = footprint.widthDeg * (WORLD_MAP_W / 360);
         const heightPx = footprint.heightDeg * (WORLD_MAP_H / 180);
-        if (Math.max(widthPx, heightPx) < MAP_TINY_COUNTRY_PX) {
-          marker = {
-            cx: (footprint.lonMid + 180) * (WORLD_MAP_W / 360),
-            cy: (90 - footprint.latMid) * (WORLD_MAP_H / 180),
-          };
+        const maxPx = Math.max(widthPx, heightPx);
+        const [cx, cy] = projectPointRaw(footprint.lonMid, footprint.latMid);
+        if (maxPx < MAP_TINY_COUNTRY_PX) {
+          marker = { cx, cy };
+        } else if (maxPx < MAP_SMALL_COUNTRY_PX) {
+          exaggerate = { cx, cy, factor: MAP_SMALL_EXAGGERATION };
         }
       }
+      const d = geometryToPath(arcs, geometry, name, exaggerate);
       return { name, d, marker };
     })
     .filter((f) => f.name && f.d);
+
+  const phantoms = MAP_PHANTOM_COUNTRIES.map((p) => {
+    const [cx, cy] = projectPointRaw(p.lon, p.lat);
+    return { name: p.name, d: "", marker: { cx, cy } };
+  });
+
+  return [...fromGeometries, ...phantoms];
 }
 
 let worldMapPromise = null;
@@ -1376,7 +1408,7 @@ function ensureWorldMapLoaded() {
 function renderCountryMap() {
   if (!el.countryMap) return;
   if (!state.worldMapFeatures) {
-    el.countryMap.innerHTML = `<p class="map-loading">Loading map…</p>`;
+    el.countryMap.innerHTML = `<div class="map-loading"><div class="map-spinner"></div><span>Loading map…</span></div>`;
     ensureWorldMapLoaded();
     return;
   }
@@ -1423,10 +1455,12 @@ function renderCountryMap() {
   if (!svg) {
     const pathsMarkup = state.worldMapFeatures
       .map((f) => {
-        const path = `<path class="map-country" data-name="${f.name}" d="${f.d}" fill-rule="evenodd"></path>`;
         // Small island nations / microstates can render under a pixel wide, so give
         // them a fixed-size dot at their center — otherwise a visited country like
-        // Barbados or Malta is technically colored in but invisible.
+        // Barbados or Malta is technically colored in but invisible. A few
+        // countries (Tuvalu) have no polygon at all in this dataset and are
+        // marker-only "phantom" entries.
+        const path = f.d ? `<path class="map-country" data-name="${f.name}" d="${f.d}" fill-rule="evenodd"></path>` : "";
         const marker = f.marker
           ? `<circle class="map-country map-country-marker" data-name="${f.name}" data-marker="1" cx="${f.marker.cx.toFixed(2)}" cy="${f.marker.cy.toFixed(2)}" r="${MAP_MARKER_RADIUS}"></circle>`
           : "";
@@ -1842,9 +1876,7 @@ function render() {
   renderHolidayHeatmap();
   renderHolidayBurndown();
   renderHolidayTodos();
-  // The map section is collapsed by default; skip the (740KB) fetch and SVG build
-  // until it's actually opened, then keep it in sync with later renders.
-  if (state.worldMapFeatures || el.countryMapPanel?.open) renderCountryMap();
+  renderCountryMap();
   renderHolidayTable();
   renderCalendar();
 }
@@ -2471,10 +2503,6 @@ if (el.yearSelect) el.yearSelect.addEventListener("change", async (e) => {
   await setYear(e.target.value);
   renderBankHolidayList();
 });
-if (el.countryMapPanel) el.countryMapPanel.addEventListener("toggle", () => {
-  if (el.countryMapPanel.open) renderCountryMap();
-});
-
 function setAuthedUI(authed) {
   const gate = document.getElementById("auth-gate");
   const app = document.getElementById("app-main");
