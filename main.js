@@ -1456,7 +1456,7 @@ function placeMapLabels(labelsGroup, features) {
   // Pass 1: place plain text nodes at their country's anchor so their real
   // rendered size (font metrics, per-character width) can be measured.
   labelsGroup.innerHTML = features
-    .map((f) => `<text class="map-country-label" x="${f.labelPos.cx.toFixed(2)}" y="${f.labelPos.cy.toFixed(2)}">${f.name}</text>`)
+    .map((f) => `<text class="map-country-label map-country-label-${f.category}" x="${f.labelPos.cx.toFixed(2)}" y="${f.labelPos.cy.toFixed(2)}">${f.name}</text>`)
     .join("");
 
   const textEls = Array.from(labelsGroup.querySelectorAll(".map-country-label"));
@@ -1546,6 +1546,16 @@ function renderCountryMap() {
     if (entry.current) cats.push("current");
     if (entry.due) cats.push("due");
     return cats;
+  };
+
+  // For a country straddling multiple categories, the fill goes hatched (all of
+  // them at once), but label text needs one solid color — pick the same
+  // current > due > past priority the map used before hatching existed.
+  const dominantCategory = (cats) => {
+    if (cats.includes("current")) return "current";
+    if (cats.includes("due")) return "due";
+    if (cats.includes("past")) return "past";
+    return null;
   };
 
   // The polygon geometry never changes, so build the (large) SVG markup once and, on
@@ -1661,9 +1671,9 @@ function renderCountryMap() {
     if (!state.showMapLabels) {
       labelsGroup.innerHTML = "";
     } else {
-      const candidates = state.worldMapFeatures.filter(
-        (f) => f.labelPos && categoriesFor(statusByCountry.get(f.name)).length > 0
-      );
+      const candidates = state.worldMapFeatures
+        .map((f) => ({ ...f, category: dominantCategory(categoriesFor(statusByCountry.get(f.name))) }))
+        .filter((f) => f.labelPos && f.category);
       placeMapLabels(labelsGroup, candidates);
     }
   }
