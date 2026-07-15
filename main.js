@@ -589,6 +589,14 @@ function displayStatus(holiday) {
   return HOLIDAY_STATUSES.includes(normalized) ? normalized : "planning";
 }
 
+// Every trip in a past year is inherently "completed" (its end date has already
+// passed), so applying the "hide completed" toggle there would hide the whole year
+// instead of just filtering out finished trips within it. Only let it take effect
+// while looking at the current year or later — matches when the toggle is shown.
+function hideCompletedAppliesToYear(year) {
+  return state.hideCompleted && year >= new Date().getFullYear();
+}
+
 async function loadData() {
   if (!db) {
     setStatusMessage("App is not configured.", true);
@@ -1516,7 +1524,7 @@ function renderNextBigHolidayHero() {
 
 function renderHolidayTable() {
   const rowsForYear = holidaysForYear(state.year)
-    .filter((h) => !state.hideCompleted || displayStatus(h) !== "completed");
+    .filter((h) => !hideCompletedAppliesToYear(state.year) || displayStatus(h) !== "completed");
   if (!rowsForYear.length) {
     el.holidayTable.innerHTML = `<p>No holidays to show for <strong>${state.year}</strong>.</p>`;
     return;
@@ -1625,7 +1633,7 @@ function renderHolidayTable() {
 function buildHolidayDayIndex(year) {
   const idx = new Map();
   for (const h of state.holidays) {
-    if (state.hideCompleted && displayStatus(h) === "completed") continue;
+    if (hideCompletedAppliesToYear(year) && displayStatus(h) === "completed") continue;
     const start = parseDate(h.startDate);
     const end = parseDate(h.endDate);
     if (start.getFullYear() !== year && end.getFullYear() !== year) continue;
@@ -1657,7 +1665,7 @@ function renderCalendar() {
   const holidayIdx = buildHolidayDayIndex(year);
 
   for (let month = 0; month < 12; month++) {
-    if (state.hideCompleted) {
+    if (hideCompletedAppliesToYear(year)) {
       const monthEnd = new Date(year, month + 1, 0);
       if (monthEnd < today) continue;
     }
