@@ -825,6 +825,13 @@ function syncAllowanceEditorFromSelection() {
 
 function updateHolidayAllowanceWarning() {
   if (!el.holidayForm || !el.holidayAllowanceWarning) return;
+  // Allowance tracking only matters for the current year onward — a trip already
+  // in a past year is historical record-keeping, not something to warn about.
+  if (state.year < new Date().getFullYear()) {
+    el.holidayAllowanceWarning.classList.add("hidden");
+    el.holidayAllowanceWarning.textContent = "";
+    return;
+  }
   const daysOffWorkRaw = Number(el.holidayForm.elements.daysOffWork?.value || 0);
   const daysOffWork = Number.isFinite(daysOffWorkRaw) ? daysOffWorkRaw : 0;
   const selectedPeople = Array.from(el.holidayForm.querySelectorAll('input[name="person"]:checked')).map((n) => n.value);
