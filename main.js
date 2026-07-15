@@ -134,6 +134,11 @@ const RECOGNIZED_COUNTRIES = [
 const WORLD_MAP_URL = "./data/world-50m.json";
 const WORLD_MAP_W = 960;
 const WORLD_MAP_H = 500;
+// Countries rendering smaller than this on the map (small island nations, city
+// states) get a fallback marker dot placed at their center, since their actual
+// polygon can be well under a pixel wide and otherwise invisible.
+const MAP_TINY_COUNTRY_PX = 4;
+const MAP_MARKER_RADIUS = 1.8;
 
 // The boundary dataset draws sovereign-state territory as one feature, so some
 // countries' overseas departments/territories (geographically on another
@@ -1267,25 +1272,50 @@ function ringToPath(arcs, ringArcIndices) {
     .join(" ");
 }
 
+function keepMapPolygon(arcs, poly, countryName) {
+  const zones = MAP_TERRITORY_EXCLUSIONS[countryName];
+  if (!zones) return true;
+  // Sample the first point of the polygon's outer ring — good enough to place a
+  // disjoint overseas piece without walking every point in it.
+  const [lon, lat] = arcCoords(arcs, poly[0][0])[0];
+  return !zones.some((z) => lon >= z.lonMin && lon <= z.lonMax && lat >= z.latMin && lat <= z.latMax);
+}
+
 function geometryToPath(arcs, geometry, countryName) {
   if (geometry.type === "Polygon") {
     return geometry.arcs.map((ring) => ringToPath(arcs, ring)).join(" ");
   }
   if (geometry.type === "MultiPolygon") {
-    const zones = MAP_TERRITORY_EXCLUSIONS[countryName];
-    const keepPolygon = (poly) => {
-      if (!zones) return true;
-      // Sample the first point of the polygon's outer ring — good enough to place
-      // a disjoint overseas piece without walking every point in it.
-      const [lon, lat] = arcCoords(arcs, poly[0][0])[0];
-      return !zones.some((z) => lon >= z.lonMin && lon <= z.lonMax && lat >= z.latMin && lat <= z.latMax);
-    };
     return geometry.arcs
-      .filter(keepPolygon)
+      .filter((poly) => keepMapPolygon(arcs, poly, countryName))
       .map((poly) => poly.map((ring) => ringToPath(arcs, ring)).join(" "))
       .join(" ");
   }
   return "";
+}
+
+// Bounding box (in degrees) of a feature's kept geometry — used to detect countries
+// that render too small to see (small island nations, microstates) so a fallback
+// marker dot can be placed at their center.
+function geometryFootprint(arcs, geometry, countryName) {
+  let lonMin = Infinity, lonMax = -Infinity, latMin = Infinity, latMax = -Infinity;
+  const visitRing = (ring) => {
+    for (const idx of ring) {
+      for (const [lon, lat] of arcCoords(arcs, idx)) {
+        if (lon < lonMin) lonMin = lon;
+        if (lon > lonMax) lonMax = lon;
+        if (lat < latMin) latMin = lat;
+        if (lat > latMax) latMax = lat;
+      }
+    }
+  };
+  if (geometry.type === "Polygon") {
+    geometry.arcs.forEach(visitRing);
+  } else if (geometry.type === "MultiPolygon") {
+    geometry.arcs.filter((poly) => keepMapPolygon(arcs, poly, countryName)).forEach((poly) => poly.forEach(visitRing));
+  }
+  if (!Number.isFinite(lonMin)) return null;
+  return { lonMid: (lonMin + lonMax) / 2, latMid: (latMin + latMax) / 2, widthDeg: lonMax - lonMin, heightDeg: latMax - latMin };
 }
 
 async function loadWorldMap() {
@@ -1306,7 +1336,23 @@ async function loadWorldMap() {
   const arcs = decodeTopoJsonArcs(topology);
   const geometries = topology.objects?.countries?.geometries || [];
   return geometries
-    .map((geometry) => ({ name: geometry.properties?.name || "", d: geometryToPath(arcs, geometry, geometry.properties?.name || "") }))
+    .map((geometry) => {
+      const name = geometry.properties?.name || "";
+      const d = geometryToPath(arcs, geometry, name);
+      const footprint = geometryFootprint(arcs, geometry, name);
+      let marker = null;
+      if (footprint) {
+        const widthPx = footprint.widthDeg * (WORLD_MAP_W / 360);
+        const heightPx = footprint.heightDeg * (WORLD_MAP_H / 180);
+        if (Math.max(widthPx, heightPx) < MAP_TINY_COUNTRY_PX) {
+          marker = {
+            cx: (footprint.lonMid + 180) * (WORLD_MAP_W / 360),
+            cy: (90 - footprint.latMid) * (WORLD_MAP_H / 180),
+          };
+        }
+      }
+      return { name, d, marker };
+    })
     .filter((f) => f.name && f.d);
 }
 
@@ -1376,7 +1422,16 @@ function renderCountryMap() {
   let svg = el.countryMap.querySelector(".country-map-svg");
   if (!svg) {
     const pathsMarkup = state.worldMapFeatures
-      .map((f) => `<path class="map-country" data-name="${f.name}" d="${f.d}" fill-rule="evenodd"></path>`)
+      .map((f) => {
+        const path = `<path class="map-country" data-name="${f.name}" d="${f.d}" fill-rule="evenodd"></path>`;
+        // Small island nations / microstates can render under a pixel wide, so give
+        // them a fixed-size dot at their center — otherwise a visited country like
+        // Barbados or Malta is technically colored in but invisible.
+        const marker = f.marker
+          ? `<circle class="map-country map-country-marker" data-name="${f.name}" data-marker="1" cx="${f.marker.cx.toFixed(2)}" cy="${f.marker.cy.toFixed(2)}" r="${MAP_MARKER_RADIUS}"></circle>`
+          : "";
+        return path + marker;
+      })
       .join("");
     el.countryMap.innerHTML = `
       <div class="country-map-wrap">
@@ -1442,19 +1497,28 @@ function renderCountryMap() {
   }
 
   svg.setAttribute("aria-label", `Map of countries visited up to ${year}`);
-  let visitedCount = 0;
-  let dueCount = 0;
-  svg.querySelectorAll(".map-country").forEach((path) => {
-    const entry = statusByCountry.get(path.dataset.name);
+  svg.querySelectorAll(".map-country").forEach((node) => {
+    const entry = statusByCountry.get(node.dataset.name);
     const cats = categoriesFor(entry);
-    let cls = "map-country";
+    // Tiny countries render both a <path> and a marker <circle> sharing the same
+    // data-name — keep the marker class distinct from the (mutually exclusive)
+    // category classes rather than deriving it from the element type each time.
+    let cls = node.dataset.marker ? "map-country map-country-marker" : "map-country";
     if (cats.length === 1) cls += ` map-country-${cats[0]}`;
     else if (cats.length > 1) cls += ` map-country-hatch-${cats.join("-")}`;
-    path.setAttribute("class", cls);
-    path.dataset.summary = entry ? entry.trips.join(", ") : "";
+    node.setAttribute("class", cls);
+    node.dataset.summary = entry ? entry.trips.join(", ") : "";
+  });
+
+  // Tally from the matched countries directly rather than the DOM, since a tiny
+  // country contributes two elements (path + marker) to the same count.
+  let visitedCount = 0;
+  let dueCount = 0;
+  for (const entry of statusByCountry.values()) {
+    const cats = categoriesFor(entry);
     if (cats.includes("past") || cats.includes("current")) visitedCount += 1;
     if (cats.includes("due")) dueCount += 1;
-  });
+  }
 
   const summaryEl = el.countryMap.querySelector(".country-map-summary");
   if (summaryEl) {
