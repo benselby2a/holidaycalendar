@@ -1163,6 +1163,19 @@ tr:hover { background: var(--table-hover); }
   background-image: repeating-linear-gradient(45deg, var(--map-current) 0 3px, var(--map-due) 3px 6px);
 }
 
+.map-country-label {
+  font-size: 6px;
+  font-weight: 600;
+  fill: var(--text);
+  stroke: var(--card);
+  stroke-width: 2px;
+  paint-order: stroke;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  pointer-events: none;
+  user-select: none;
+}
+
 /* ── Holiday todos ─────────────────── */
 
 .holiday-todos {
