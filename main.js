@@ -2655,7 +2655,13 @@ function setAuthedUI(authed) {
   // Only ever hide app-main here (on sign-out/no session) — revealing it is
   // deferred until data has actually finished loading, via revealApp(), so we
   // don't flash the empty unpopulated shell while the DB call is in flight.
-  if (!authed && app) app.classList.add("hidden");
+  if (!authed) {
+    if (app) app.classList.add("hidden");
+    // No session to load data for — stop showing the initial full-page
+    // spinner (visible by default from first paint) and let the sign-in form
+    // through instead.
+    hidePageLoading();
+  }
 }
 
 function revealApp() {
@@ -2684,7 +2690,14 @@ document.getElementById("sign-out-btn")?.addEventListener("click", async () => {
 });
 
 (async function init() {
-  if (!db) return;
+  if (!db) {
+    // Nothing will ever call setAuthedUI() to clear the default full-page
+    // spinner in this case — fall back to the sign-in form so the user isn't
+    // stuck looking at a spinner forever if Supabase failed to initialize.
+    hidePageLoading();
+    document.getElementById("auth-gate")?.classList.remove("hidden");
+    return;
+  }
 
   const signInForm = document.getElementById("sign-in-form");
   const authError = document.getElementById("auth-error");
