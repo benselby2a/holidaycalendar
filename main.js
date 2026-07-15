@@ -1443,6 +1443,67 @@ function ensureWorldMapLoaded() {
   return worldMapPromise;
 }
 
+// Renders each feature's label offset from its country (with a leader line back to
+// it) and nudged around a ring of candidate positions to avoid overlapping any
+// label already placed — labels never sit directly on top of their country, and
+// with many visited countries clustered together (the Caribbean, the Balkans),
+// a naive "label at the centroid" approach overlaps badly.
+const MAP_LABEL_RADII = [9, 15, 21, 28, 36, 45];
+const MAP_LABEL_ANGLE_STEP_DEG = 30;
+const MAP_LABEL_PADDING = 1.5;
+
+function placeMapLabels(labelsGroup, features) {
+  // Pass 1: place plain text nodes at their country's anchor so their real
+  // rendered size (font metrics, per-character width) can be measured.
+  labelsGroup.innerHTML = features
+    .map((f) => `<text class="map-country-label" x="${f.labelPos.cx.toFixed(2)}" y="${f.labelPos.cy.toFixed(2)}">${f.name}</text>`)
+    .join("");
+
+  const textEls = Array.from(labelsGroup.querySelectorAll(".map-country-label"));
+  const placedBoxes = [];
+  const lines = [];
+
+  textEls.forEach((textEl, i) => {
+    const { cx, cy } = features[i].labelPos;
+    const bbox = textEl.getBBox();
+    const halfW = bbox.width / 2 + MAP_LABEL_PADDING;
+    const halfH = bbox.height / 2 + MAP_LABEL_PADDING;
+    const boxAt = (x, y) => ({ left: x - halfW, right: x + halfW, top: y - halfH, bottom: y + halfH });
+    const overlapsAny = (box) =>
+      placedBoxes.some((b) => box.left < b.right && box.right > b.left && box.top < b.bottom && box.bottom > b.top);
+
+    let chosen = null;
+    for (const r of MAP_LABEL_RADII) {
+      for (let deg = 0; deg < 360; deg += MAP_LABEL_ANGLE_STEP_DEG) {
+        const rad = (deg * Math.PI) / 180;
+        const x = cx + r * Math.cos(rad);
+        const y = cy + r * Math.sin(rad);
+        const box = boxAt(x, y);
+        if (!overlapsAny(box)) {
+          chosen = { x, y, box };
+          break;
+        }
+      }
+      if (chosen) break;
+    }
+    if (!chosen) {
+      // Every candidate ring collided with something — fall back to the widest
+      // ring rather than dropping the label; a little overlap beats no label.
+      const r = MAP_LABEL_RADII[MAP_LABEL_RADII.length - 1];
+      const x = cx + r;
+      const y = cy;
+      chosen = { x, y, box: boxAt(x, y) };
+    }
+
+    placedBoxes.push(chosen.box);
+    textEl.setAttribute("x", chosen.x.toFixed(2));
+    textEl.setAttribute("y", chosen.y.toFixed(2));
+    lines.push(`<line class="map-label-line" x1="${cx.toFixed(2)}" y1="${cy.toFixed(2)}" x2="${chosen.x.toFixed(2)}" y2="${chosen.y.toFixed(2)}"></line>`);
+  });
+
+  labelsGroup.insertAdjacentHTML("afterbegin", lines.join(""));
+}
+
 function renderCountryMap() {
   if (!el.countryMap) return;
   if (!state.worldMapFeatures) {
@@ -1597,12 +1658,14 @@ function renderCountryMap() {
 
   const labelsGroup = svg.querySelector(".map-labels");
   if (labelsGroup) {
-    labelsGroup.innerHTML = state.showMapLabels
-      ? state.worldMapFeatures
-          .filter((f) => f.labelPos && categoriesFor(statusByCountry.get(f.name)).length > 0)
-          .map((f) => `<text class="map-country-label" x="${f.labelPos.cx.toFixed(2)}" y="${f.labelPos.cy.toFixed(2)}">${f.name}</text>`)
-          .join("")
-      : "";
+    if (!state.showMapLabels) {
+      labelsGroup.innerHTML = "";
+    } else {
+      const candidates = state.worldMapFeatures.filter(
+        (f) => f.labelPos && categoriesFor(statusByCountry.get(f.name)).length > 0
+      );
+      placeMapLabels(labelsGroup, candidates);
+    }
   }
 
   // Tally from the matched countries directly rather than the DOM, since a tiny
