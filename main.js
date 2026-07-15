@@ -1690,7 +1690,7 @@ function renderCountryMap() {
       { key: "past", cls: "map-legend-past", label: "Visited (past years)" },
       { key: "current", cls: "map-legend-current", label: "Visited this year" },
       { key: "due", cls: "map-legend-due", label: "Due to be visited" },
-      { key: "returning", cls: "map-legend-returning", label: "Straddles multiple" },
+      { key: "returning", cls: "map-legend-returning", label: "Revisiting this year" },
     ];
     legendEl.innerHTML = LEGEND_ITEMS.filter((item) => categoriesPresent.has(item.key))
       .map((item) => `<span><span class="legend-swatch ${item.cls}"></span>${item.label}</span>`)
