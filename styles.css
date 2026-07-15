@@ -1166,7 +1166,6 @@ tr:hover { background: var(--table-hover); }
 .map-country-label {
   font-size: 6px;
   font-weight: 600;
-  fill: var(--text);
   stroke: var(--card);
   stroke-width: 2px;
   paint-order: stroke;
@@ -1175,6 +1174,10 @@ tr:hover { background: var(--table-hover); }
   pointer-events: none;
   user-select: none;
 }
+
+.map-country-label-past { fill: var(--map-past); }
+.map-country-label-current { fill: var(--map-current); }
+.map-country-label-due { fill: var(--map-due); }
 
 .map-label-line {
   stroke: var(--muted);
