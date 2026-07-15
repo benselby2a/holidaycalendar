@@ -237,6 +237,7 @@ function matchCountryToMapName(countryName, mapNameIndex) {
 }
 
 const el = {
+  pageLoadingOverlay: document.getElementById("page-loading-overlay"),
   peopleForm: document.getElementById("people-form"),
   peopleList: document.getElementById("people-list"),
   peopleModal: document.getElementById("people-modal"),
@@ -305,6 +306,19 @@ function setStatusMessage(message, isError = false) {
   statusToastTimer = window.setTimeout(() => {
     node.classList.add("hidden");
   }, isError ? 4500 : 3000);
+}
+
+// Counted rather than a plain boolean so overlapping loads (e.g. a rapid year
+// change while the initial load is still in flight) don't hide the overlay early
+// just because one of them finished.
+let pageLoadingDepth = 0;
+function showPageLoading() {
+  pageLoadingDepth += 1;
+  el.pageLoadingOverlay?.classList.remove("hidden");
+}
+function hidePageLoading() {
+  pageLoadingDepth = Math.max(0, pageLoadingDepth - 1);
+  if (pageLoadingDepth === 0) el.pageLoadingOverlay?.classList.add("hidden");
 }
 
 function populateCountrySelect(selectEl, selected = "United Kingdom") {
@@ -616,80 +630,84 @@ function hideCompletedAppliesToYear(year) {
 }
 
 async function loadData() {
-  if (!db) {
-    setStatusMessage("App is not configured.", true);
-    return;
-  }
+  showPageLoading();
+  try {
+    if (!db) {
+      setStatusMessage("App is not configured.", true);
+      return;
+    }
 
-  let peopleDirectoryRes = await db.from("people").select("*").order("name", { ascending: true });
-  if (peopleDirectoryRes.error && (String(peopleDirectoryRes.error.code) === "42P01" || String(peopleDirectoryRes.error.code) === "PGRST204")) {
-    peopleDirectoryRes = { data: [], error: null };
-  }
-  let peopleRes = await db.from("people_allowance").select("*").order("name", { ascending: true });
-  const holidaysRes = await db.from("holidays").select("*").order("start_date", { ascending: true });
-  let bankHolidaysRes = await db.from("bank_holidays").select("*").order("holiday_date", { ascending: true });
-  if (bankHolidaysRes.error && (String(bankHolidaysRes.error.code) === "PGRST204" || String(bankHolidaysRes.error.code) === "42P01" || String(bankHolidaysRes.error.code) === "42703")) {
-    bankHolidaysRes = { data: [], error: null };
-  }
+    let peopleDirectoryRes = await db.from("people").select("*").order("name", { ascending: true });
+    if (peopleDirectoryRes.error && (String(peopleDirectoryRes.error.code) === "42P01" || String(peopleDirectoryRes.error.code) === "PGRST204")) {
+      peopleDirectoryRes = { data: [], error: null };
+    }
+    let peopleRes = await db.from("people_allowance").select("*").order("name", { ascending: true });
+    const holidaysRes = await db.from("holidays").select("*").order("start_date", { ascending: true });
+    let bankHolidaysRes = await db.from("bank_holidays").select("*").order("holiday_date", { ascending: true });
+    if (bankHolidaysRes.error && (String(bankHolidaysRes.error.code) === "PGRST204" || String(bankHolidaysRes.error.code) === "42P01" || String(bankHolidaysRes.error.code) === "42703")) {
+      bankHolidaysRes = { data: [], error: null };
+    }
 
-  if (peopleRes.error || holidaysRes.error || bankHolidaysRes.error || peopleDirectoryRes.error) {
-    const reason = peopleRes.error?.message || holidaysRes.error?.message || bankHolidaysRes.error?.message || peopleDirectoryRes.error?.message || "Unknown error";
-    setStatusMessage(`Could not load data from Supabase: ${reason}`, true);
-    return;
-  }
+    if (peopleRes.error || holidaysRes.error || bankHolidaysRes.error || peopleDirectoryRes.error) {
+      const reason = peopleRes.error?.message || holidaysRes.error?.message || bankHolidaysRes.error?.message || peopleDirectoryRes.error?.message || "Unknown error";
+      setStatusMessage(`Could not load data from Supabase: ${reason}`, true);
+      return;
+    }
 
-  const allPeopleRows = (peopleRes.data || []).map((p) => ({
-    id: p.id,
-    name: p.name,
-    standard: Number(p.standard_days),
-    additional: Number(p.additional_days),
-    allowanceYear: Number(p.allowance_year || state.year),
-  }));
-  const directoryNames = (peopleDirectoryRes.data || []).map((p) => p.name);
-  const fallbackNames = allPeopleRows.map((p) => p.name);
-  state.peopleNames = Array.from(new Set([...directoryNames, ...fallbackNames])).sort((a, b) => a.localeCompare(b));
-  state.people = allPeopleRows.filter((p) => p.allowanceYear === state.year || Number.isNaN(p.allowanceYear));
+    const allPeopleRows = (peopleRes.data || []).map((p) => ({
+      id: p.id,
+      name: p.name,
+      standard: Number(p.standard_days),
+      additional: Number(p.additional_days),
+      allowanceYear: Number(p.allowance_year || state.year),
+    }));
+    const directoryNames = (peopleDirectoryRes.data || []).map((p) => p.name);
+    const fallbackNames = allPeopleRows.map((p) => p.name);
+    state.peopleNames = Array.from(new Set([...directoryNames, ...fallbackNames])).sort((a, b) => a.localeCompare(b));
+    state.people = allPeopleRows.filter((p) => p.allowanceYear === state.year || Number.isNaN(p.allowanceYear));
 
-  state.holidays = (holidaysRes.data || []).map((h) => ({
-    id: h.id,
-    location: h.location,
-    country: h.country || "",
-    startDate: h.start_date,
-    endDate: h.end_date,
-    startHalf: h.start_half || "am",
-    endHalf: h.end_half || "pm",
-    daysOffWork: Number(h.days_off_work ?? h.days),
-    status: (String(h.status || "").toLowerCase() === "ideation") ? "planning" : (h.status || "planning"),
-    peopleDays: h.people_days || {},
-  }));
-  state.bankHolidays = (bankHolidaysRes.data || []).map((h) => ({
-    id: h.id,
-    holidayYear: Number(h.holiday_year),
-    holidayDate: h.holiday_date,
-    name: h.name,
-  }));
-  if (!state.bankHolidays.some((h) => h.holidayYear === state.year)) {
-    const defaults = getBankHolidaysEnglandWales(state.year).map((h) => ({
-      holiday_year: state.year,
-      holiday_date: h.iso,
+    state.holidays = (holidaysRes.data || []).map((h) => ({
+      id: h.id,
+      location: h.location,
+      country: h.country || "",
+      startDate: h.start_date,
+      endDate: h.end_date,
+      startHalf: h.start_half || "am",
+      endHalf: h.end_half || "pm",
+      daysOffWork: Number(h.days_off_work ?? h.days),
+      status: (String(h.status || "").toLowerCase() === "ideation") ? "planning" : (h.status || "planning"),
+      peopleDays: h.people_days || {},
+    }));
+    state.bankHolidays = (bankHolidaysRes.data || []).map((h) => ({
+      id: h.id,
+      holidayYear: Number(h.holiday_year),
+      holidayDate: h.holiday_date,
       name: h.name,
     }));
-    const saveDefaults = await db.from("bank_holidays").upsert(defaults, { onConflict: "holiday_year,holiday_date" });
-    if (!saveDefaults.error) {
-      const refreshed = await db.from("bank_holidays").select("*").eq("holiday_year", state.year).order("holiday_date", { ascending: true });
-      if (!refreshed.error) {
-        state.bankHolidays = state.bankHolidays
-          .filter((h) => h.holidayYear !== state.year)
-          .concat((refreshed.data || []).map((h) => ({
-            id: h.id,
-            holidayYear: Number(h.holiday_year),
-            holidayDate: h.holiday_date,
-            name: h.name,
-          })));
+    if (!state.bankHolidays.some((h) => h.holidayYear === state.year)) {
+      const defaults = getBankHolidaysEnglandWales(state.year).map((h) => ({
+        holiday_year: state.year,
+        holiday_date: h.iso,
+        name: h.name,
+      }));
+      const saveDefaults = await db.from("bank_holidays").upsert(defaults, { onConflict: "holiday_year,holiday_date" });
+      if (!saveDefaults.error) {
+        const refreshed = await db.from("bank_holidays").select("*").eq("holiday_year", state.year).order("holiday_date", { ascending: true });
+        if (!refreshed.error) {
+          state.bankHolidays = state.bankHolidays
+            .filter((h) => h.holidayYear !== state.year)
+            .concat((refreshed.data || []).map((h) => ({
+              id: h.id,
+              holidayYear: Number(h.holiday_year),
+              holidayDate: h.holiday_date,
+              name: h.name,
+            })));
+        }
       }
     }
+  } finally {
+    hidePageLoading();
   }
-
 }
 
 function renderPeopleList() {
