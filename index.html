@@ -7,7 +7,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="./icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=20260715-37" />
+    <link rel="stylesheet" href="styles.css?v=20260715-38" />
     <script>
       if (window !== window.parent) {
         document.documentElement.setAttribute('data-hub', '');
@@ -97,13 +97,12 @@
         </div>
       </section>
 
-      <details id="country-map-panel" class="panel map-panel">
-        <summary class="panel-head map-summary">
+      <section id="country-map-panel" class="panel">
+        <div class="panel-head">
           <h2>Countries Visited</h2>
-          <span class="map-toggle-icon" aria-hidden="true">▾</span>
-        </summary>
+        </div>
         <div id="country-map"></div>
-      </details>
+      </section>
 
       <div class="utility-actions">
         <button id="open-people" class="secondary-utility-btn" type="button">People Setup</button>
@@ -333,6 +332,6 @@
     </template>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" crossorigin="anonymous"></script>
-    <script src="main.js?v=20260715-37"></script>
+    <script src="main.js?v=20260715-38"></script>
   </body>
 </html>
