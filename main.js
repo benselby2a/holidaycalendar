@@ -1206,9 +1206,25 @@ function ringToPath(arcs, ringArcIndices) {
     points = points.concat(i === 0 ? seg : seg.slice(1));
   });
   if (points.length < 2) return "";
-  const [first, ...rest] = points;
-  const line = rest.map(([lon, lat]) => projectLonLat(lon, lat)).join("L");
-  return `M${projectLonLat(first[0], first[1])}L${line}Z`;
+
+  // Break the ring wherever it crosses the antimeridian (longitude jumps by > 180°)
+  // so a country that wraps the edge of an equirectangular map (Russia, Fiji,
+  // Antarctica) renders as separate pieces instead of one streak connecting its
+  // far-east and far-west halves straight across the map.
+  const segments = [[points[0]]];
+  for (let i = 1; i < points.length; i++) {
+    if (Math.abs(points[i][0] - points[i - 1][0]) > 180) segments.push([]);
+    segments[segments.length - 1].push(points[i]);
+  }
+
+  return segments
+    .filter((seg) => seg.length >= 2)
+    .map((seg) => {
+      const [first, ...rest] = seg;
+      const line = rest.map(([lon, lat]) => projectLonLat(lon, lat)).join("L");
+      return `M${projectLonLat(first[0], first[1])}L${line}Z`;
+    })
+    .join(" ");
 }
 
 function geometryToPath(arcs, geometry) {
