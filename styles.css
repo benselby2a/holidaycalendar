@@ -16,6 +16,7 @@
   --map-past: #16a34a;
   --map-current: #0f766e;
   --map-due: #d97706;
+  --map-returning: #7c3aed;
   --map-empty: #e5e7eb;
   --radius-sm: 10px;
   --radius-md: 14px;
@@ -63,6 +64,7 @@
   --map-past: #4ade80;
   --map-current: #2dd4bf;
   --map-due: #fbbf24;
+  --map-returning: #a78bfa;
   --map-empty: #2a2e3a;
   --input-bg: #1e2130;
   --table-stripe: #1e2130;
@@ -1140,9 +1142,9 @@ tr:hover { background: var(--table-hover); }
 .map-country-past { fill: var(--map-past); cursor: pointer; }
 .map-country-current { fill: var(--map-current); cursor: pointer; }
 .map-country-due { fill: var(--map-due); cursor: pointer; }
+.map-country-returning { fill: var(--map-returning); cursor: pointer; }
 
 .map-country-hatch-past-current { fill: url(#map-hatch-past-current); cursor: pointer; }
-.map-country-hatch-past-due { fill: url(#map-hatch-past-due); cursor: pointer; }
 .map-country-hatch-current-due { fill: url(#map-hatch-current-due); cursor: pointer; }
 .map-country-hatch-past-current-due { fill: url(#map-hatch-past-current-due); cursor: pointer; }
 
@@ -1164,6 +1166,7 @@ tr:hover { background: var(--table-hover); }
 .map-legend-past { background: var(--map-past); }
 .map-legend-current { background: var(--map-current); }
 .map-legend-due { background: var(--map-due); }
+.map-legend-returning { background: var(--map-returning); }
 .map-legend-hatch {
   background-image: repeating-linear-gradient(45deg, var(--map-current) 0 3px, var(--map-due) 3px 6px);
 }
@@ -1183,6 +1186,7 @@ tr:hover { background: var(--table-hover); }
 .map-country-label-past { fill: var(--map-past); }
 .map-country-label-current { fill: var(--map-current); }
 .map-country-label-due { fill: var(--map-due); }
+.map-country-label-returning { fill: var(--map-returning); }
 
 .map-label-line {
   stroke: var(--muted);
