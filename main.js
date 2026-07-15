@@ -101,6 +101,8 @@ const state = {
   hideCompleted: readHideCompletedPref(),
   showHeatmapFree: readHeatmapFreePref(),
   view: "table",
+  worldMapFeatures: null,
+  worldMapNameIndex: null,
 };
 
 const HOLIDAY_STATUSES = ["planning", "booked", "happened"];
@@ -129,6 +131,74 @@ const RECOGNIZED_COUNTRIES = [
   "Vietnam","Yemen","Zambia","Zimbabwe","Palestine"
 ];
 
+const WORLD_MAP_URL = "./data/world-50m.json";
+const WORLD_MAP_W = 960;
+const WORLD_MAP_H = 500;
+
+// Country-name matching between RECOGNIZED_COUNTRIES and the boundary dataset's own
+// naming (which favours abbreviations, e.g. "St. Kitts and Nevis", "Dem. Rep. Congo").
+// Expand common abbreviations, then fuzzy-match on normalized token overlap so we don't
+// need an exhaustive 1:1 lookup table for every country.
+const MAP_NAME_ABBREVIATIONS = {
+  st: "saint", rep: "republic", dem: "democratic", eq: "equatorial",
+  herz: "herzegovina", gren: "grenadines", vin: "vincent", is: "islands",
+  s: "south", barb: "barbuda",
+};
+const MAP_NAME_ALIASES = {
+  "united states": "united states of america",
+  "vatican city": "vatican",
+  "north macedonia": "macedonia",
+};
+
+function normalizeMapCountryName(raw) {
+  const stripped = String(raw || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/'/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .trim();
+  const tokens = stripped
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((t) => MAP_NAME_ABBREVIATIONS[t] || t)
+    .filter((t) => t !== "the" && t !== "of");
+  return tokens.join(" ");
+}
+
+function tokenSimilarity(a, b) {
+  const ta = new Set(a.split(" ").filter(Boolean));
+  const tb = new Set(b.split(" ").filter(Boolean));
+  if (!ta.size || !tb.size) return 0;
+  let common = 0;
+  for (const t of ta) if (tb.has(t)) common += 1;
+  return common / Math.max(ta.size, tb.size);
+}
+
+// Fuzzy-resolve a trip's country (or a RECOGNIZED_COUNTRIES entry) to a boundary-dataset
+// feature name. mapNameIndex maps normalized map names -> their original display name.
+function matchCountryToMapName(countryName, mapNameIndex) {
+  const norm = normalizeMapCountryName(countryName);
+  const alias = MAP_NAME_ALIASES[norm];
+  if (alias) {
+    const aliasHit = mapNameIndex.get(normalizeMapCountryName(alias));
+    if (aliasHit) return aliasHit;
+  }
+  const exact = mapNameIndex.get(norm);
+  if (exact) return exact;
+
+  let best = null;
+  let bestScore = 0;
+  for (const [mapNorm, mapName] of mapNameIndex) {
+    const score = tokenSimilarity(norm, mapNorm);
+    if (score > bestScore) {
+      bestScore = score;
+      best = mapName;
+    }
+  }
+  return bestScore >= 0.5 ? best : null;
+}
+
 const el = {
   peopleForm: document.getElementById("people-form"),
   peopleList: document.getElementById("people-list"),
@@ -148,6 +218,8 @@ const el = {
   holidayHeatmap: document.getElementById("holiday-heatmap"),
   holidayBurndown: document.getElementById("holiday-burndown"),
   holidayTodos: document.getElementById("holiday-todos"),
+  countryMap: document.getElementById("country-map"),
+  countryMapPanel: document.getElementById("country-map-panel"),
   nextBigHolidayHero: document.getElementById("next-big-holiday-hero"),
   openAllowance: document.getElementById("open-allowance"),
   allowanceModal: document.getElementById("allowance-modal"),
@@ -1101,6 +1173,200 @@ function renderHolidayBurndown() {
   }
 }
 
+// ── World map (TopoJSON) ──────────────────────────────────────────
+
+function projectLonLat(lon, lat) {
+  const x = (lon + 180) * (WORLD_MAP_W / 360);
+  const y = (90 - lat) * (WORLD_MAP_H / 180);
+  return `${x.toFixed(2)},${y.toFixed(2)}`;
+}
+
+function decodeTopoJsonArcs(topology) {
+  const { scale = [1, 1], translate = [0, 0] } = topology.transform || {};
+  return topology.arcs.map((arc) => {
+    let x = 0, y = 0;
+    return arc.map(([dx, dy]) => {
+      x += dx;
+      y += dy;
+      return [x * scale[0] + translate[0], y * scale[1] + translate[1]];
+    });
+  });
+}
+
+function arcCoords(arcs, index) {
+  const i = index < 0 ? ~index : index;
+  const coords = arcs[i];
+  return index < 0 ? coords.slice().reverse() : coords;
+}
+
+function ringToPath(arcs, ringArcIndices) {
+  let points = [];
+  ringArcIndices.forEach((idx, i) => {
+    const seg = arcCoords(arcs, idx);
+    points = points.concat(i === 0 ? seg : seg.slice(1));
+  });
+  if (points.length < 2) return "";
+
+  // Break the ring wherever it crosses the antimeridian (longitude jumps by > 180°)
+  // so a country that wraps the edge of an equirectangular map (Russia, Fiji,
+  // Antarctica) renders as separate pieces instead of one streak connecting its
+  // far-east and far-west halves straight across the map.
+  const segments = [[points[0]]];
+  for (let i = 1; i < points.length; i++) {
+    if (Math.abs(points[i][0] - points[i - 1][0]) > 180) segments.push([]);
+    segments[segments.length - 1].push(points[i]);
+  }
+
+  return segments
+    .filter((seg) => seg.length >= 2)
+    .map((seg) => {
+      const [first, ...rest] = seg;
+      const line = rest.map(([lon, lat]) => projectLonLat(lon, lat)).join("L");
+      return `M${projectLonLat(first[0], first[1])}L${line}Z`;
+    })
+    .join(" ");
+}
+
+function geometryToPath(arcs, geometry) {
+  if (geometry.type === "Polygon") {
+    return geometry.arcs.map((ring) => ringToPath(arcs, ring)).join(" ");
+  }
+  if (geometry.type === "MultiPolygon") {
+    return geometry.arcs.map((poly) => poly.map((ring) => ringToPath(arcs, ring)).join(" ")).join(" ");
+  }
+  return "";
+}
+
+async function loadWorldMap() {
+  const res = await fetch(WORLD_MAP_URL);
+  if (!res.ok) throw new Error(`Could not load world map (${res.status})`);
+  const topology = await res.json();
+  const arcs = decodeTopoJsonArcs(topology);
+  const geometries = topology.objects?.countries?.geometries || [];
+  return geometries
+    .map((geometry) => ({ name: geometry.properties?.name || "", d: geometryToPath(arcs, geometry) }))
+    .filter((f) => f.name && f.d);
+}
+
+let worldMapPromise = null;
+function ensureWorldMapLoaded() {
+  if (!worldMapPromise) {
+    worldMapPromise = loadWorldMap()
+      .then((features) => {
+        state.worldMapFeatures = features;
+        state.worldMapNameIndex = new Map(features.map((f) => [normalizeMapCountryName(f.name), f.name]));
+        renderCountryMap();
+      })
+      .catch((err) => {
+        console.error("[MHP] Failed to load world map:", err);
+        if (el.countryMap) el.countryMap.innerHTML = `<p class="map-loading">Could not load the world map.</p>`;
+      });
+  }
+  return worldMapPromise;
+}
+
+function renderCountryMap() {
+  if (!el.countryMap) return;
+  if (!state.worldMapFeatures) {
+    el.countryMap.innerHTML = `<p class="map-loading">Loading map…</p>`;
+    ensureWorldMapLoaded();
+    return;
+  }
+
+  const year = state.year;
+  // matched map country name -> { past, current, future, trips }
+  const statusByCountry = new Map();
+  for (const h of state.holidays) {
+    const country = String(h.country || "").trim();
+    if (!country) continue;
+    const mapName = matchCountryToMapName(country, state.worldMapNameIndex);
+    if (!mapName) continue;
+    const hYear = holidayYear(h);
+    const entry = statusByCountry.get(mapName) || { past: false, current: false, future: false, trips: [] };
+    if (hYear === year) entry.current = true;
+    else if (hYear < year) entry.past = true;
+    else entry.future = true;
+    entry.trips.push(`${h.location || country} (${hYear})`);
+    statusByCountry.set(mapName, entry);
+  }
+
+  const categoryFor = (entry) => {
+    if (!entry) return null;
+    if (entry.current) return "current";
+    if (entry.past) return "past";
+    if (entry.future) return "due";
+    return null;
+  };
+
+  // The polygon geometry never changes, so build the (large) SVG markup once and, on
+  // every later render, just re-tag each <path> with its category for this year — far
+  // cheaper than re-serializing ~1MB of path data on every render() call.
+  let svg = el.countryMap.querySelector(".country-map-svg");
+  if (!svg) {
+    const pathsMarkup = state.worldMapFeatures
+      .map((f) => `<path class="map-country" data-name="${f.name}" d="${f.d}" fill-rule="evenodd"></path>`)
+      .join("");
+    el.countryMap.innerHTML = `
+      <div class="country-map-wrap">
+        <p class="country-map-summary"></p>
+        <div class="country-map-svg-wrap">
+          <svg class="country-map-svg" viewBox="0 0 ${WORLD_MAP_W} ${WORLD_MAP_H}" preserveAspectRatio="xMidYMid meet" role="img">
+            ${pathsMarkup}
+          </svg>
+          <div class="country-map-tooltip" hidden></div>
+        </div>
+        <div class="heatmap-legend">
+          <span><span class="legend-swatch map-legend-past"></span>Visited (past years)</span>
+          <span><span class="legend-swatch map-legend-current"></span>Visited this year</span>
+          <span><span class="legend-swatch map-legend-due"></span>Due to be visited</span>
+        </div>
+      </div>
+    `;
+    svg = el.countryMap.querySelector(".country-map-svg");
+    const tip = el.countryMap.querySelector(".country-map-tooltip");
+    const wrap = el.countryMap.querySelector(".country-map-svg-wrap");
+    const showTip = (e) => {
+      const target = e.target.closest(".map-country");
+      if (!target) {
+        tip.hidden = true;
+        return;
+      }
+      const name = target.dataset.name;
+      const summary = target.dataset.summary;
+      tip.innerHTML = summary
+        ? `<div class="tip-date">${name}</div><div class="tip-row tip-muted">${summary}</div>`
+        : `<div class="tip-date">${name}</div>`;
+      tip.hidden = false;
+      const rect = wrap.getBoundingClientRect();
+      const tipW = tip.offsetWidth;
+      let left = e.clientX - rect.left + 14;
+      if (left + tipW > rect.width) left = e.clientX - rect.left - tipW - 14;
+      tip.style.left = `${Math.max(0, left)}px`;
+      tip.style.top = `${Math.max(0, e.clientY - rect.top - 8)}px`;
+    };
+    svg.addEventListener("pointermove", showTip);
+    svg.addEventListener("pointerdown", showTip);
+    svg.addEventListener("pointerleave", () => { tip.hidden = true; });
+  }
+
+  svg.setAttribute("aria-label", `Map of countries visited up to ${year}`);
+  let visitedCount = 0;
+  let dueCount = 0;
+  svg.querySelectorAll(".map-country").forEach((path) => {
+    const entry = statusByCountry.get(path.dataset.name);
+    const category = categoryFor(entry);
+    path.setAttribute("class", category ? `map-country map-country-${category}` : "map-country");
+    path.dataset.summary = entry ? entry.trips.join(", ") : "";
+    if (category === "past" || category === "current") visitedCount += 1;
+    if (category === "due") dueCount += 1;
+  });
+
+  const summaryEl = el.countryMap.querySelector(".country-map-summary");
+  if (summaryEl) {
+    summaryEl.innerHTML = `<strong>${visitedCount}</strong> ${visitedCount === 1 ? "country" : "countries"} visited up to ${year}${dueCount ? `, <strong>${dueCount}</strong> more due` : ""}`;
+  }
+}
+
 function renderHolidayTodos() {
   if (!el.holidayTodos) return;
   const rowsForYear = holidaysForYear(state.year);
@@ -1417,6 +1683,9 @@ function render() {
   renderHolidayHeatmap();
   renderHolidayBurndown();
   renderHolidayTodos();
+  // The map section is collapsed by default; skip the (740KB) fetch and SVG build
+  // until it's actually opened, then keep it in sync with later renders.
+  if (state.worldMapFeatures || el.countryMapPanel?.open) renderCountryMap();
   renderHolidayTable();
   renderCalendar();
 }
@@ -2042,6 +2311,9 @@ if (el.hideCompleted) el.hideCompleted.addEventListener("change", (e) => {
 if (el.yearSelect) el.yearSelect.addEventListener("change", async (e) => {
   await setYear(e.target.value);
   renderBankHolidayList();
+});
+if (el.countryMapPanel) el.countryMapPanel.addEventListener("toggle", () => {
+  if (el.countryMapPanel.open) renderCountryMap();
 });
 
 function setAuthedUI(authed) {
