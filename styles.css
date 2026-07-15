@@ -13,6 +13,10 @@
   --ok-soft: #dcfce7;
   --warn: #dc2626;
   --warn-soft: #fee2e2;
+  --map-past: #16a34a;
+  --map-current: #0f766e;
+  --map-due: #d97706;
+  --map-empty: #e5e7eb;
   --radius-sm: 10px;
   --radius-md: 14px;
   --radius-lg: 18px;
@@ -56,6 +60,10 @@
   --ok-soft: rgba(74, 222, 128, 0.12);
   --warn: #f87171;
   --warn-soft: rgba(248, 113, 113, 0.12);
+  --map-past: #4ade80;
+  --map-current: #2dd4bf;
+  --map-due: #fbbf24;
+  --map-empty: #2a2e3a;
   --input-bg: #1e2130;
   --table-stripe: #1e2130;
   --table-hover: rgba(45, 212, 191, 0.06);
@@ -970,7 +978,8 @@ tr:hover { background: var(--table-hover); }
 }
 
 .burndown-tooltip,
-.heatmap-tooltip {
+.heatmap-tooltip,
+.country-map-tooltip {
   position: absolute;
   z-index: 5;
   pointer-events: none;
@@ -986,13 +995,15 @@ tr:hover { background: var(--table-hover); }
 }
 
 .burndown-tooltip .tip-date,
-.heatmap-tooltip .tip-date {
+.heatmap-tooltip .tip-date,
+.country-map-tooltip .tip-date {
   font-weight: 600;
   margin-bottom: 3px;
 }
 
 .burndown-tooltip .tip-row,
-.heatmap-tooltip .tip-row {
+.heatmap-tooltip .tip-row,
+.country-map-tooltip .tip-row {
   display: flex;
   align-items: center;
   gap: 5px;
@@ -1008,7 +1019,8 @@ tr:hover { background: var(--table-hover); }
 }
 
 .burndown-tooltip .tip-ideal,
-.heatmap-tooltip .tip-muted {
+.heatmap-tooltip .tip-muted,
+.country-map-tooltip .tip-muted {
   color: var(--muted);
 }
 
@@ -1048,6 +1060,52 @@ tr:hover { background: var(--table-hover); }
 
 .legend-total { background: var(--accent); }
 .legend-off { background: var(--warn); }
+
+/* ── Country map ───────────────────── */
+
+.country-map-wrap { margin-top: 12px; }
+
+.map-loading {
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 24px 0;
+  text-align: center;
+}
+
+.country-map-svg-wrap {
+  position: relative;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.country-map-svg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.map-country {
+  fill: var(--map-empty);
+  stroke: var(--card);
+  stroke-width: 0.5;
+  transition: fill 0.15s ease;
+  cursor: default;
+}
+
+.map-country-past { fill: var(--map-past); cursor: pointer; }
+.map-country-current { fill: var(--map-current); cursor: pointer; }
+.map-country-due { fill: var(--map-due); cursor: pointer; }
+
+.map-country:hover { stroke: var(--line-strong); stroke-width: 1; }
+
+.country-map-tooltip {
+  white-space: normal;
+  max-width: 220px;
+}
+
+.map-legend-past { background: var(--map-past); }
+.map-legend-current { background: var(--map-current); }
+.map-legend-due { background: var(--map-due); }
 
 /* ── Holiday todos ─────────────────── */
 
