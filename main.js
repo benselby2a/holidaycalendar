@@ -1312,6 +1312,23 @@ function ringToPath(arcs, ringArcIndices, exaggerate) {
     segments[segments.length - 1].push(points[i]);
   }
 
+  // A ring is a closed loop — its last point is adjacent to its first. If a ring
+  // crosses the antimeridian and later crosses back (Russia's coastline exits
+  // past Chukotka then re-enters further south), the piece before the first
+  // crossing and the piece after the last one are the same continuous piece,
+  // not two separate shapes — merge them. Otherwise each gets auto-closed
+  // independently with a straight line back to its own start, which for Russia
+  // drew a bogus diagonal wedge from Chukotka down to Vladivostok, cutting
+  // across the sea north of Japan.
+  if (segments.length > 1) {
+    const first = points[0];
+    const last = points[points.length - 1];
+    if (Math.abs(first[0] - last[0]) <= 180) {
+      const firstSeg = segments.shift();
+      segments[segments.length - 1] = segments[segments.length - 1].concat(firstSeg);
+    }
+  }
+
   return segments
     .filter((seg) => seg.length >= 2)
     .map((seg) => {
