@@ -1296,12 +1296,16 @@ function renderCountryMap() {
     statusByCountry.set(mapName, entry);
   }
 
-  const categoryFor = (entry) => {
-    if (!entry) return null;
-    if (entry.current) return "current";
-    if (entry.due) return "due";
-    if (entry.past) return "past";
-    return null;
+  // Countries with trips that fall into more than one bucket (e.g. visited in a past
+  // year AND due again this year) get a hatched fill combining every bucket they're
+  // in, rather than picking one winner.
+  const categoriesFor = (entry) => {
+    if (!entry) return [];
+    const cats = [];
+    if (entry.past) cats.push("past");
+    if (entry.current) cats.push("current");
+    if (entry.due) cats.push("due");
+    return cats;
   };
 
   // The polygon geometry never changes, so build the (large) SVG markup once and, on
@@ -1317,6 +1321,25 @@ function renderCountryMap() {
         <p class="country-map-summary"></p>
         <div class="country-map-svg-wrap">
           <svg class="country-map-svg" viewBox="0 0 ${WORLD_MAP_W} ${WORLD_MAP_H}" preserveAspectRatio="xMidYMid meet" role="img">
+            <defs>
+              <pattern id="map-hatch-past-current" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <rect width="8" height="8" fill="var(--map-past)"></rect>
+                <rect width="4" height="8" fill="var(--map-current)"></rect>
+              </pattern>
+              <pattern id="map-hatch-past-due" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <rect width="8" height="8" fill="var(--map-past)"></rect>
+                <rect width="4" height="8" fill="var(--map-due)"></rect>
+              </pattern>
+              <pattern id="map-hatch-current-due" width="8" height="8" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <rect width="8" height="8" fill="var(--map-current)"></rect>
+                <rect width="4" height="8" fill="var(--map-due)"></rect>
+              </pattern>
+              <pattern id="map-hatch-past-current-due" width="12" height="12" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+                <rect width="12" height="12" fill="var(--map-past)"></rect>
+                <rect width="4" height="12" fill="var(--map-current)"></rect>
+                <rect x="8" width="4" height="12" fill="var(--map-due)"></rect>
+              </pattern>
+            </defs>
             ${pathsMarkup}
           </svg>
           <div class="country-map-tooltip" hidden></div>
@@ -1325,6 +1348,7 @@ function renderCountryMap() {
           <span><span class="legend-swatch map-legend-past"></span>Visited (past years)</span>
           <span><span class="legend-swatch map-legend-current"></span>Visited this year</span>
           <span><span class="legend-swatch map-legend-due"></span>Due to be visited</span>
+          <span><span class="legend-swatch map-legend-hatch"></span>Straddles multiple</span>
         </div>
       </div>
     `;
@@ -1360,11 +1384,14 @@ function renderCountryMap() {
   let dueCount = 0;
   svg.querySelectorAll(".map-country").forEach((path) => {
     const entry = statusByCountry.get(path.dataset.name);
-    const category = categoryFor(entry);
-    path.setAttribute("class", category ? `map-country map-country-${category}` : "map-country");
+    const cats = categoriesFor(entry);
+    let cls = "map-country";
+    if (cats.length === 1) cls += ` map-country-${cats[0]}`;
+    else if (cats.length > 1) cls += ` map-country-hatch-${cats.join("-")}`;
+    path.setAttribute("class", cls);
     path.dataset.summary = entry ? entry.trips.join(", ") : "";
-    if (category === "past" || category === "current") visitedCount += 1;
-    if (category === "due") dueCount += 1;
+    if (cats.includes("past") || cats.includes("current")) visitedCount += 1;
+    if (cats.includes("due")) dueCount += 1;
   });
 
   const summaryEl = el.countryMap.querySelector(".country-map-summary");
