@@ -3,6 +3,7 @@ const SUPABASE_ANON_KEY = "sb_publishable_xlNQ_QudJNUlMLjWpr0iJA_YgO87tox";
 const HIDE_COMPLETED_STORAGE_KEY = "holidayPlanner.hideCompletedTrips";
 const SELECTED_YEAR_STORAGE_KEY = "holidayPlanner.selectedYear";
 const HEATMAP_FREE_STORAGE_KEY = "holidayPlanner.heatmapShowFree";
+const MAP_LABELS_STORAGE_KEY = "holidayPlanner.mapShowLabels";
 let statusToastTimer = null;
 const inHub = window !== window.parent;
 
@@ -92,6 +93,22 @@ function writeHeatmapFreePref(value) {
   }
 }
 
+function readMapLabelsPref() {
+  try {
+    return window.localStorage.getItem(MAP_LABELS_STORAGE_KEY) === "1";
+  } catch (_) {
+    return false;
+  }
+}
+
+function writeMapLabelsPref(value) {
+  try {
+    window.localStorage.setItem(MAP_LABELS_STORAGE_KEY, value ? "1" : "0");
+  } catch (_) {
+    // Ignore localStorage access issues.
+  }
+}
+
 const state = {
   people: [],
   peopleNames: [],
@@ -100,6 +117,7 @@ const state = {
   year: readSelectedYearPref() ?? defaultPlannerYear(),
   hideCompleted: readHideCompletedPref(),
   showHeatmapFree: readHeatmapFreePref(),
+  showMapLabels: readMapLabelsPref(),
   view: "table",
   worldMapFeatures: null,
   worldMapNameIndex: null,
@@ -1382,11 +1400,13 @@ async function loadWorldMap() {
       const footprint = geometryFootprint(arcs, geometry, name);
       let marker = null;
       let exaggerate = null;
+      let labelPos = null;
       if (footprint) {
         const widthPx = footprint.widthDeg * (WORLD_MAP_W / 360);
         const heightPx = footprint.heightDeg * (WORLD_MAP_H / 180);
         const maxPx = Math.max(widthPx, heightPx);
         const [cx, cy] = projectPointRaw(footprint.lonMid, footprint.latMid);
+        labelPos = { cx, cy };
         if (maxPx < MAP_TINY_COUNTRY_PX) {
           marker = { cx, cy };
         } else if (maxPx < MAP_SMALL_COUNTRY_PX) {
@@ -1394,13 +1414,13 @@ async function loadWorldMap() {
         }
       }
       const d = geometryToPath(arcs, geometry, name, exaggerate);
-      return { name, d, marker };
+      return { name, d, marker, labelPos };
     })
     .filter((f) => f.name && f.d);
 
   const phantoms = MAP_PHANTOM_COUNTRIES.map((p) => {
     const [cx, cy] = projectPointRaw(p.lon, p.lat);
-    return { name: p.name, d: "", marker: { cx, cy } };
+    return { name: p.name, d: "", marker: { cx, cy }, labelPos: { cx, cy } };
   });
 
   return [...fromGeometries, ...phantoms];
@@ -1434,9 +1454,10 @@ function renderCountryMap() {
   const year = state.year;
   const today = todayIsoLocal();
   // matched map country name -> { past, current, due, trips }
-  // "current" = already-completed trips in the selected year; "due" = trips still
-  // upcoming in the selected year. Trips in years after the selected year aren't
-  // categorized — "due" only reflects what's due within the year being viewed.
+  // "current" = trips in the selected year that have already started (including
+  // ones still in progress today, not just fully finished ones); "due" = trips
+  // still upcoming in the selected year. Trips in years after the selected year
+  // aren't categorized — "due" only reflects what's due within the year being viewed.
   const statusByCountry = new Map();
   for (const h of state.holidays) {
     const country = String(h.country || "").trim();
@@ -1447,7 +1468,7 @@ function renderCountryMap() {
     const entry = statusByCountry.get(mapName) || { past: false, current: false, due: false, trips: [] };
     if (hYear < year) entry.past = true;
     else if (hYear === year) {
-      if (h.endDate < today) entry.current = true;
+      if (h.startDate <= today) entry.current = true;
       else entry.due = true;
     }
     entry.trips.push(`${h.location || country} (${hYear})`);
@@ -1510,6 +1531,7 @@ function renderCountryMap() {
               </pattern>
             </defs>
             ${pathsMarkup}
+            <g class="map-labels"></g>
           </svg>
           <div class="country-map-tooltip" hidden></div>
         </div>
@@ -1519,6 +1541,10 @@ function renderCountryMap() {
           <span><span class="legend-swatch map-legend-due"></span>Due to be visited</span>
           <span><span class="legend-swatch map-legend-hatch"></span>Straddles multiple</span>
         </div>
+        <label class="heatmap-values-toggle">
+          <input type="checkbox" id="map-labels-toggle" ${state.showMapLabels ? "checked" : ""} />
+          <span>Show labels on visited countries</span>
+        </label>
       </div>
     `;
     svg = el.countryMap.querySelector(".country-map-svg");
@@ -1546,6 +1572,13 @@ function renderCountryMap() {
     svg.addEventListener("pointermove", showTip);
     svg.addEventListener("pointerdown", showTip);
     svg.addEventListener("pointerleave", () => { tip.hidden = true; });
+
+    const labelsToggle = document.getElementById("map-labels-toggle");
+    labelsToggle?.addEventListener("change", () => {
+      state.showMapLabels = labelsToggle.checked;
+      writeMapLabelsPref(state.showMapLabels);
+      renderCountryMap();
+    });
   }
 
   svg.setAttribute("aria-label", `Map of countries visited up to ${year}`);
@@ -1561,6 +1594,16 @@ function renderCountryMap() {
     node.setAttribute("class", cls);
     node.dataset.summary = entry ? entry.trips.join(", ") : "";
   });
+
+  const labelsGroup = svg.querySelector(".map-labels");
+  if (labelsGroup) {
+    labelsGroup.innerHTML = state.showMapLabels
+      ? state.worldMapFeatures
+          .filter((f) => f.labelPos && categoriesFor(statusByCountry.get(f.name)).length > 0)
+          .map((f) => `<text class="map-country-label" x="${f.labelPos.cx.toFixed(2)}" y="${f.labelPos.cy.toFixed(2)}">${f.name}</text>`)
+          .join("")
+      : "";
+  }
 
   // Tally from the matched countries directly rather than the DOM, since a tiny
   // country contributes two elements (path + marker) to the same count.
