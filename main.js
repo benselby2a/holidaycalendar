@@ -144,6 +144,8 @@ const MAP_MARKER_RADIUS = 2.2;
 // more than a sliver without turning into an abstract dot.
 const MAP_SMALL_COUNTRY_PX = 20;
 const MAP_SMALL_EXAGGERATION = 1.6;
+const MAP_ZOOM_MIN = 1;
+const MAP_ZOOM_MAX = 8;
 
 // Absent from the boundary dataset even at this resolution — Tuvalu's total land
 // area (~26 km²) is below what gets included at 50m. Added as a marker-only
@@ -1637,6 +1639,11 @@ function renderCountryMap() {
             <g class="map-labels"></g>
           </svg>
           <div class="country-map-tooltip" hidden></div>
+          <div class="country-map-zoom-controls">
+            <button type="button" class="country-map-zoom-btn" id="map-zoom-in" aria-label="Zoom in">+</button>
+            <button type="button" class="country-map-zoom-btn" id="map-zoom-out" aria-label="Zoom out">&minus;</button>
+            <button type="button" class="country-map-zoom-btn" id="map-zoom-reset" aria-label="Reset zoom">&#8634;</button>
+          </div>
         </div>
         <div class="heatmap-legend country-map-legend"></div>
       </div>
@@ -1663,9 +1670,87 @@ function renderCountryMap() {
       tip.style.left = `${Math.max(0, left)}px`;
       tip.style.top = `${Math.max(0, e.clientY - rect.top - 8)}px`;
     };
-    svg.addEventListener("pointermove", showTip);
-    svg.addEventListener("pointerdown", showTip);
-    svg.addEventListener("pointerleave", () => { tip.hidden = true; });
+
+    // Zoom/pan: pan by dragging the SVG's viewBox rather than the page's own
+    // scroll/zoom, since the map is embedded inline in a normal page — pinch or
+    // scroll-to-zoom on the page itself wouldn't let you see more map detail.
+    let zoomView = { x: 0, y: 0, w: WORLD_MAP_W, h: WORLD_MAP_H, scale: 1 };
+    const applyZoomView = () => {
+      svg.setAttribute("viewBox", `${zoomView.x.toFixed(2)} ${zoomView.y.toFixed(2)} ${zoomView.w.toFixed(2)} ${zoomView.h.toFixed(2)}`);
+      wrap.classList.toggle("is-zoomed", zoomView.scale > MAP_ZOOM_MIN);
+    };
+    const setMapZoom = (scale, clientX, clientY) => {
+      scale = Math.min(MAP_ZOOM_MAX, Math.max(MAP_ZOOM_MIN, scale));
+      const newW = WORLD_MAP_W / scale;
+      const newH = WORLD_MAP_H / scale;
+      const rect = svg.getBoundingClientRect();
+      const anchorX = clientX ?? rect.left + rect.width / 2;
+      const anchorY = clientY ?? rect.top + rect.height / 2;
+      // Keep whatever point is under the cursor (or the view's own center, for
+      // the +/- buttons) fixed in place while the box grows/shrinks around it.
+      const px = zoomView.x + ((anchorX - rect.left) / rect.width) * zoomView.w;
+      const py = zoomView.y + ((anchorY - rect.top) / rect.height) * zoomView.h;
+      const ratioX = (px - zoomView.x) / zoomView.w;
+      const ratioY = (py - zoomView.y) / zoomView.h;
+      zoomView.w = newW;
+      zoomView.h = newH;
+      zoomView.x = Math.min(WORLD_MAP_W - newW, Math.max(0, px - ratioX * newW));
+      zoomView.y = Math.min(WORLD_MAP_H - newH, Math.max(0, py - ratioY * newH));
+      zoomView.scale = scale;
+      applyZoomView();
+    };
+    const resetMapZoom = () => {
+      zoomView = { x: 0, y: 0, w: WORLD_MAP_W, h: WORLD_MAP_H, scale: 1 };
+      applyZoomView();
+    };
+
+    let dragState = null;
+    const DRAG_THRESHOLD_PX = 3;
+    const moveDrag = (e) => {
+      if (!dragState || e.pointerId !== dragState.pointerId) return false;
+      const dxClient = e.clientX - dragState.startClientX;
+      const dyClient = e.clientY - dragState.startClientY;
+      if (!dragState.moved && Math.hypot(dxClient, dyClient) < DRAG_THRESHOLD_PX) return true;
+      dragState.moved = true;
+      tip.hidden = true;
+      wrap.classList.add("is-dragging");
+      const rect = svg.getBoundingClientRect();
+      const dxSvg = (dxClient / rect.width) * zoomView.w;
+      const dySvg = (dyClient / rect.height) * zoomView.h;
+      zoomView.x = Math.min(WORLD_MAP_W - zoomView.w, Math.max(0, dragState.startViewX - dxSvg));
+      zoomView.y = Math.min(WORLD_MAP_H - zoomView.h, Math.max(0, dragState.startViewY - dySvg));
+      applyZoomView();
+      return true;
+    };
+    const endDrag = (e) => {
+      if (!dragState || e.pointerId !== dragState.pointerId) return;
+      svg.releasePointerCapture(e.pointerId);
+      dragState = null;
+      wrap.classList.remove("is-dragging");
+    };
+
+    svg.addEventListener("pointerdown", (e) => {
+      if (zoomView.scale > MAP_ZOOM_MIN) {
+        dragState = { pointerId: e.pointerId, startClientX: e.clientX, startClientY: e.clientY, startViewX: zoomView.x, startViewY: zoomView.y, moved: false };
+        svg.setPointerCapture(e.pointerId);
+      }
+      showTip(e);
+    });
+    svg.addEventListener("pointermove", (e) => {
+      if (moveDrag(e)) return;
+      showTip(e);
+    });
+    svg.addEventListener("pointerup", endDrag);
+    svg.addEventListener("pointercancel", endDrag);
+    svg.addEventListener("pointerleave", () => { if (!dragState) tip.hidden = true; });
+    svg.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      setMapZoom(zoomView.scale * (e.deltaY < 0 ? 1.25 : 1 / 1.25), e.clientX, e.clientY);
+    }, { passive: false });
+
+    document.getElementById("map-zoom-in")?.addEventListener("click", () => setMapZoom(zoomView.scale * 1.5));
+    document.getElementById("map-zoom-out")?.addEventListener("click", () => setMapZoom(zoomView.scale / 1.5));
+    document.getElementById("map-zoom-reset")?.addEventListener("click", () => resetMapZoom());
   }
 
   svg.setAttribute("aria-label", `Map of countries visited up to ${year}`);
@@ -1871,7 +1956,7 @@ function renderHolidayTable() {
     .join("");
 
   el.holidayTable.innerHTML = `
-    <p>Showing holidays for <strong>${state.year}</strong></p>
+    <p class="showing-holidays-for">Showing holidays for <strong>${state.year}</strong></p>
     <table>
       <thead>
         <tr>
