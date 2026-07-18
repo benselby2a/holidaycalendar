@@ -690,7 +690,10 @@ tr:hover { background: var(--table-hover); }
   font-size: 0.8rem;
 }
 
-.trip-mobile-status-tag {
+/* Specificity bumped to .tag.trip-mobile-status-tag: .tag (defined below, same
+   specificity otherwise) sets display: inline-block, which — by source order —
+   would otherwise win and silence align-items, leaving the label off-center. */
+.tag.trip-mobile-status-tag {
   margin-right: 0;
   min-height: 30px;
   display: inline-flex;
@@ -1524,7 +1527,9 @@ tr:hover { background: var(--table-hover); }
 
   table { min-width: 640px; }
 
-  #holiday-table table { min-width: 0; }
+  /* Each trip already renders as its own bordered .trip-mobile-card, so the
+     table's own outer border just doubles up around the whole stack. */
+  #holiday-table table { min-width: 0; border: none; border-radius: 0; overflow: visible; }
   #holiday-table thead tr:not(.month-row),
   #holiday-table tr:not(.month-row):not(.trip-row-mobile) { display: none; }
   #holiday-table .trip-row-mobile { display: table-row; }
