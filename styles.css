@@ -380,6 +380,35 @@ button.danger {
   color: #fff;
 }
 
+.table-actions { display: inline-flex; gap: 6px; align-items: center; }
+
+.pack-trip-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 12px;
+  min-height: 42px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  text-decoration: none;
+  transition: all 140ms ease;
+}
+
+.pack-trip-link:hover {
+  border-color: var(--line-strong);
+  transform: translateY(-1px);
+}
+
+.pack-trip-link.trip-mobile-edit {
+  min-height: 34px;
+  padding: 6px 12px;
+  font-size: 0.8rem;
+}
+
 .full-width { grid-column: 1 / -1; }
 
 /* ── Checkbox wrap ─────────────────── */
