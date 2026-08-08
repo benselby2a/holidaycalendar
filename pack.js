@@ -133,21 +133,20 @@
     setAddCardCollapsed(true);
     await refreshCurrentUser();
     await loadLocal(holidayId);
-    inferWhoami();
     render();
 
     await fetchHolidayDetails(holidayId);
     render();
 
     // Awaited (not fire-and-forget) so travellers pulled from the server —
-    // not just whatever happened to be cached locally — are in state before
-    // we try to match the logged-in user to one of them. Without this,
-    // inferWhoami() above only sees an empty/stale list on a device with no
-    // local cache yet, silently falls through to "first traveller by sort
-    // order", and the real match arrives too late: syncNow()'s own render()
-    // doesn't know to re-run inference.
+    // not just whatever happened to be cached locally — are in state
+    // before inferWhoami() runs. inferWhoami() auto-creates a traveller
+    // when the signed-in account doesn't have one on this trip yet, so it
+    // must only run once we've confirmed (via a completed sync) that they
+    // genuinely don't exist remotely — calling it any earlier risks
+    // creating a duplicate of a traveller someone else already added.
     await syncNow();
-    inferWhoami();
+    await inferWhoami();
     render();
 
     clearInterval(syncInterval);
@@ -174,18 +173,40 @@
     return KNOWN_USER_NAMES[currentUserEmail] || null;
   }
 
-  function inferWhoami() {
-    const people = tripTravellers(state.holiday.id);
+  // "I am" is never picked by hand — it's derived from the signed-in
+  // account (KNOWN_USER_NAMES) and, if that traveller isn't on this trip
+  // yet, created automatically. Must only be called after syncNow() has
+  // resolved at least once: creating a traveller here means "confirmed via
+  // the server that they don't already exist on this trip", and calling it
+  // against stale/empty local-cache-only data risks creating a duplicate
+  // of a traveller that already exists remotely (e.g. a brand new device,
+  // opened offline, for a trip someone else already set up).
+  async function inferWhoami() {
     const inferredName = inferredTravellerName();
-    const inferredMatch = inferredName
-      ? people.find((p) => canonicalKey(p.name) === canonicalKey(inferredName))
-      : null;
-    if (inferredMatch) {
-      state.whoami = inferredMatch.id;
-      return;
+
+    if (inferredName) {
+      const existing = tripTravellers(state.holiday.id).find((p) => canonicalKey(p.name) === canonicalKey(inferredName));
+      if (existing) {
+        state.whoami = existing.id;
+        localStorage.setItem(whoamiKeyForHoliday(state.holiday.id), existing.id);
+        return;
+      }
+      if (state.supabaseReachable) {
+        const created = await addTraveller(inferredName);
+        if (created) {
+          state.whoami = created.id;
+          localStorage.setItem(whoamiKeyForHoliday(state.holiday.id), created.id);
+          return;
+        }
+      }
     }
+
+    // Unrecognised account, or offline with nothing local yet — fall back
+    // to whatever was last known for this trip, but never let the UI
+    // present a choice.
     const stored = localStorage.getItem(whoamiKeyForHoliday(state.holiday.id));
-    state.whoami = people.some((t) => t.id === stored) ? stored : people[0]?.id || null;
+    const people = tripTravellers(state.holiday.id);
+    state.whoami = people.some((t) => t.id === stored) ? stored : null;
   }
 
   async function fetchHolidayDetails(holidayId) {
@@ -276,8 +297,8 @@
         </div>
 
         <div class="whoami card">
-          <label for="pack-whoami-select">I am</label>
-          <select id="pack-whoami-select"></select>
+          <span class="whoami-caption">I am</span>
+          <span id="pack-whoami-label" class="whoami-value">…</span>
         </div>
 
         <div class="tab-bar top-tab-bar">
@@ -532,7 +553,7 @@
     el.progressBar = q("pack-progress-bar");
     el.progressText = q("pack-progress-text");
 
-    el.whoamiSelect = q("pack-whoami-select");
+    el.whoamiLabel = q("pack-whoami-label");
 
     el.topTabBtns = Array.from(root.querySelectorAll(".top-tab-bar .tab-btn"));
     el.topPaneItinerary = q("pack-top-pane-itinerary");
@@ -633,12 +654,6 @@
     el.wizardBtn.addEventListener("click", openWizard);
     el.standardBtn.addEventListener("click", openStandardModal);
     el.unpackBtn.addEventListener("click", unpackEverything);
-
-    el.whoamiSelect.addEventListener("change", () => {
-      state.whoami = el.whoamiSelect.value || null;
-      if (state.whoami) localStorage.setItem(whoamiKeyForHoliday(state.holiday.id), state.whoami);
-      render();
-    });
 
     el.topTabBtns.forEach((btn) => btn.addEventListener("click", onTopTabClick));
     el.tabBtns.forEach((btn) => btn.addEventListener("click", () => setTab(btn.dataset.tab)));
@@ -755,7 +770,7 @@
     el.progressBar.style.width = `${pct}%`;
     el.progressText.textContent = `${packed}/${items.length} packed`;
 
-    renderWhoamiSelect();
+    renderWhoamiLabel();
     renderOwnerSelect();
     applyTopTab();
     setTabButtons();
@@ -816,13 +831,11 @@
     setItineraryView(btn.dataset.itineraryView);
   }
 
-  function renderWhoamiSelect() {
-    const people = tripTravellers(state.holiday.id);
-    if (!people.some((t) => t.id === state.whoami)) state.whoami = people[0]?.id || null;
-    el.whoamiSelect.innerHTML = people.length
-      ? people.map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("")
-      : `<option value="">Add a traveller</option>`;
-    if (state.whoami) el.whoamiSelect.value = state.whoami;
+  // Read-only: "I am" is decided entirely by inferWhoami() from the signed-in
+  // account, never picked here. This just displays the result (or explains
+  // why there isn't one yet) — it must never assign state.whoami itself.
+  function renderWhoamiLabel() {
+    el.whoamiLabel.textContent = travellerName(state.whoami) || "Unrecognised account";
   }
 
   function renderOwnerSelect() {
