@@ -54,8 +54,8 @@
   // defaults "I am" to whoever is actually logged in, without having to
   // reselect it every time.
   const KNOWN_USER_NAMES = {
-    // "ben@example.com": "Ben",
-    // "louise@example.com": "Louise"
+    "[redacted-email-1]": "Ben",
+    "[redacted-email-2]": "Louise"
   };
 
   let currentUserId = null;
@@ -133,13 +133,23 @@
     setAddCardCollapsed(true);
     await refreshCurrentUser();
     await loadLocal(holidayId);
-    render();
-
-    await fetchHolidayDetails(holidayId);
     inferWhoami();
     render();
 
-    syncNow();
+    await fetchHolidayDetails(holidayId);
+    render();
+
+    // Awaited (not fire-and-forget) so travellers pulled from the server —
+    // not just whatever happened to be cached locally — are in state before
+    // we try to match the logged-in user to one of them. Without this,
+    // inferWhoami() above only sees an empty/stale list on a device with no
+    // local cache yet, silently falls through to "first traveller by sort
+    // order", and the real match arrives too late: syncNow()'s own render()
+    // doesn't know to re-run inference.
+    await syncNow();
+    inferWhoami();
+    render();
+
     clearInterval(syncInterval);
     syncInterval = setInterval(syncNow, 15000);
   }
