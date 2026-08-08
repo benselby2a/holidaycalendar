@@ -148,8 +148,8 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .trip-header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
 .pack-screen .trip-header-top h2 { margin: 0; font-size: 1.2rem; }
 .pack-screen .whoami { display: flex; align-items: center; gap: 8px; }
-.pack-screen .whoami label { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
-.pack-screen .whoami select { flex: 1; }
+.pack-screen .whoami-caption { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
+.pack-screen .whoami-value { font-weight: 700; }
 
 .pack-screen .top-tab-bar .tab-btn { font-size: 0.98rem; }
 .pack-screen .itinerary-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
