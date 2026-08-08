@@ -1930,7 +1930,7 @@ function renderHolidayTable() {
         <td>
           <span class="table-actions">
             <button type="button" class="edit-trip" data-id="${h.id}">Edit</button>
-            <a class="pack-trip-link" href="${packLink}" target="_blank" rel="noopener">Pack</a>
+            <a class="pack-trip-link" href="${packLink}">PlanIt</a>
           </span>
         </td>
       </tr>
@@ -1942,7 +1942,7 @@ function renderHolidayTable() {
               <span class="trip-mobile-actions-inline">
                 <span class="tag trip-mobile-status-tag status-${statusLabel}">${statusLabel}</span>
                 <button type="button" class="edit-trip trip-mobile-edit" data-id="${h.id}">Edit</button>
-                <a class="pack-trip-link trip-mobile-edit" href="${packLink}" target="_blank" rel="noopener">Pack</a>
+                <a class="pack-trip-link trip-mobile-edit" href="${packLink}">PlanIt</a>
               </span>
             </div>
             <div class="trip-mobile-row trip-mobile-dates">
