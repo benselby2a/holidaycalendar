@@ -1,5 +1,8 @@
 const SUPABASE_URL = "https://cnkznpkvwoqxaiywwmhr.supabase.co";
 const SUPABASE_ANON_KEY = "sb_publishable_xlNQ_QudJNUlMLjWpr0iJA_YgO87tox";
+// Same Supabase project, separate app/schema (packing_list). "Pack" links
+// on each trip open that app straight into (or importing) this trip.
+const PACKING_LIST_URL = "https://benselby2a.github.io/packinglist/";
 const HIDE_COMPLETED_STORAGE_KEY = "holidayPlanner.hideCompletedTrips";
 const SELECTED_YEAR_STORAGE_KEY = "holidayPlanner.selectedYear";
 const HEATMAP_FREE_STORAGE_KEY = "holidayPlanner.heatmapShowFree";
@@ -1911,6 +1914,7 @@ function renderHolidayTable() {
         ? `<span>${startDisplay}</span><span>(${durationMeta})</span>`
         : `<span>${startDisplay}</span><span>to</span><span>${endDisplay}</span><span>(${durationMeta})</span>`;
       const showIndividualPeopleDays = benDays !== louiseDays;
+      const packLink = `${PACKING_LIST_URL}?holiday=${h.id}`;
 
       return `
       <tr class="${pastClass}">
@@ -1923,7 +1927,12 @@ function renderHolidayTable() {
         <td>${daysOffWork}</td>
         <td>${benDays || "-"}</td>
         <td>${louiseDays || "-"}</td>
-        <td><button type="button" class="edit-trip" data-id="${h.id}">Edit</button></td>
+        <td>
+          <span class="table-actions">
+            <button type="button" class="edit-trip" data-id="${h.id}">Edit</button>
+            <a class="pack-trip-link" href="${packLink}" target="_blank" rel="noopener">Pack</a>
+          </span>
+        </td>
       </tr>
       <tr class="trip-row-mobile ${pastClass}">
         <td colspan="10">
@@ -1933,6 +1942,7 @@ function renderHolidayTable() {
               <span class="trip-mobile-actions-inline">
                 <span class="tag trip-mobile-status-tag status-${statusLabel}">${statusLabel}</span>
                 <button type="button" class="edit-trip trip-mobile-edit" data-id="${h.id}">Edit</button>
+                <a class="pack-trip-link trip-mobile-edit" href="${packLink}" target="_blank" rel="noopener">Pack</a>
               </span>
             </div>
             <div class="trip-mobile-row trip-mobile-dates">
