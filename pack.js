@@ -300,11 +300,9 @@
         </div>
 
         <div id="pack-top-pane-itinerary" class="pane">
-          <div class="itinerary-toolbar">
-            <div class="view-toggle" id="pack-itinerary-view-toggle">
-              <button class="view-toggle-btn is-active" type="button" data-itinerary-view="cards">Cards</button>
-              <button class="view-toggle-btn" type="button" data-itinerary-view="table">Table</button>
-            </div>
+          <div class="tab-bar" id="pack-itinerary-view-toggle">
+            <button class="tab-btn is-active" type="button" data-itinerary-view="cards">Cards</button>
+            <button class="tab-btn" type="button" data-itinerary-view="table">Table</button>
           </div>
           <div id="pack-itinerary-days"></div>
           <div id="pack-itinerary-table-wrap" hidden></div>
@@ -1090,20 +1088,43 @@
   // columns, then "notes" after them — matches the cards view's own field
   // order (accommodation/transport/meals, then plans, then notes).
   const DAY_FIELDS_BEFORE_PLANS = ["accommodation", "transport", "breakfast", "lunch", "dinner"];
+  const PLAN_SLOTS = ["morning", "afternoon", "evening"];
 
   function itineraryTableHtml(trip, dates) {
     const cell = (v) => escapeHtml(v || "—");
     const rowFor = (dateStr) => dayRowFor(trip.id, dateStr) || {};
+    const hasText = (v) => Boolean((v || "").trim());
 
     // Skip a column entirely (header + cells) when no day in the trip has
     // anything in it — most trips only ever fill in a handful of these.
-    const hasData = (field) => dates.some((d) => (rowFor(d)[field] || "").trim());
+    const hasData = (field) => dates.some((d) => hasText(rowFor(d)[field]));
     const visibleBefore = DAY_FIELDS_BEFORE_PLANS.filter(hasData);
     const notesVisible = hasData("notes");
-    const plansHaveData = dates.some((d) => {
+
+    // Each plan slot is checked independently, same as every other
+    // column — a slot counts as "populated" either from its own field on
+    // a non-all-day day, or from an all-day entry whose span visually
+    // covers it (morning_afternoon covers morning+afternoon; full_day
+    // covers all three). An empty all-day entry (toggled on, nothing
+    // typed yet) contributes nothing either way.
+    const slotVisible = { morning: false, afternoon: false, evening: false };
+    for (const d of dates) {
       const row = rowFor(d);
-      return Boolean(row.plan_morning || row.plan_afternoon || row.plan_evening || row.plan_all_day_text);
-    });
+      if (row.plan_all_day) {
+        const span = row.plan_all_day_span === "full_day" ? "full_day" : "morning_afternoon";
+        if (hasText(row.plan_all_day_text)) {
+          slotVisible.morning = true;
+          slotVisible.afternoon = true;
+          if (span === "full_day") slotVisible.evening = true;
+        }
+        if (span !== "full_day" && hasText(row.plan_evening)) slotVisible.evening = true;
+      } else {
+        if (hasText(row.plan_morning)) slotVisible.morning = true;
+        if (hasText(row.plan_afternoon)) slotVisible.afternoon = true;
+        if (hasText(row.plan_evening)) slotVisible.evening = true;
+      }
+    }
+    const visibleSlots = PLAN_SLOTS.filter((s) => slotVisible[s]);
 
     const merges = {};
     for (const field of [...visibleBefore, ...(notesVisible ? ["notes"] : [])]) {
@@ -1116,19 +1137,27 @@
       return `<td${spanAttr}>${cell(row[field])}</td>`;
     };
 
+    const planValue = { morning: (row) => row.plan_morning, afternoon: (row) => row.plan_afternoon, evening: (row) => row.plan_evening };
+
     const rows = dates
       .map((dateStr, i) => {
         const row = rowFor(dateStr);
         let planCells = "";
-        if (plansHaveData) {
+        if (visibleSlots.length) {
           const allDay = Boolean(row.plan_all_day);
           const span = row.plan_all_day_span === "full_day" ? "full_day" : "morning_afternoon";
-          if (allDay && span === "full_day") {
-            planCells = `<td colspan="3" class="all-day-cell">${cell(row.plan_all_day_text)}</td>`;
-          } else if (allDay) {
-            planCells = `<td colspan="2" class="all-day-cell">${cell(row.plan_all_day_text)}</td><td>${cell(row.plan_evening)}</td>`;
+          if (allDay) {
+            const coveredSlots = span === "full_day" ? PLAN_SLOTS : ["morning", "afternoon"];
+            const visibleCovered = coveredSlots.filter((s) => visibleSlots.includes(s));
+            if (visibleCovered.length) {
+              const spanAttr = visibleCovered.length > 1 ? ` colspan="${visibleCovered.length}"` : "";
+              planCells += `<td${spanAttr} class="all-day-cell">${cell(row.plan_all_day_text)}</td>`;
+            }
+            if (span !== "full_day" && visibleSlots.includes("evening")) {
+              planCells += `<td>${cell(row.plan_evening)}</td>`;
+            }
           } else {
-            planCells = `<td>${cell(row.plan_morning)}</td><td>${cell(row.plan_afternoon)}</td><td>${cell(row.plan_evening)}</td>`;
+            planCells = visibleSlots.map((slot) => `<td>${cell(planValue[slot](row))}</td>`).join("");
           }
         }
         return `
@@ -1142,7 +1171,7 @@
       .join("");
 
     const beforeHeadCells = visibleBefore.map((field) => `<th>${DAY_FIELD_LABELS[field]}</th>`).join("");
-    const planHeadCells = plansHaveData ? `<th>Morning</th><th>Afternoon</th><th>Evening</th>` : "";
+    const planHeadCells = visibleSlots.map((slot) => `<th>${slot.charAt(0).toUpperCase()}${slot.slice(1)}</th>`).join("");
     const notesHeadCell = notesVisible ? `<th>${DAY_FIELD_LABELS.notes}</th>` : "";
 
     return `

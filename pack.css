@@ -175,21 +175,6 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 
 /* ------------------------------------------------------------ trip detail */
 .pack-screen .top-tab-bar .tab-btn { font-size: 0.98rem; }
-.pack-screen .itinerary-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
-
-.pack-screen .view-toggle { display: flex; gap: 4px; padding-right: 4px; flex: none; }
-.pack-screen .view-toggle-btn {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--muted);
-  border-radius: 8px;
-  padding: 6px 10px;
-  min-height: 32px;
-  font-size: 0.76rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.pack-screen .view-toggle-btn.is-active { background: var(--brand); border-color: var(--brand); color: #fff; }
 
 /* ---------------------------------------------------------- itinerary table */
 .pack-screen .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
