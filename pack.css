@@ -63,30 +63,30 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 
 /* ------------------------------------------------------------------ shell */
 .pack-topbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 12px;
+  display: grid;
+  gap: 6px;
+  padding: 10px 12px 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
   z-index: 5;
 }
-.pack-title { margin: 0; font-size: 1.2rem; display: flex; align-items: center; gap: 10px; }
-.pack-back-btn,
-.pack-icon-btn {
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text);
-  border-radius: 10px;
-  width: 40px;
-  height: 40px;
-  font-size: 1.3rem;
-  line-height: 1;
+.pack-topbar-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.pack-back-link {
+  border: none;
+  background: none;
+  color: var(--brand);
+  font-size: 0.92rem;
+  font-weight: 700;
+  padding: 6px 0;
+  min-height: 32px;
   cursor: pointer;
 }
+.pack-back-link:hover { text-decoration: underline; }
+.pack-title { margin: 0; font-size: 1.15rem; }
+.pack-subtitle { margin: 0; color: var(--muted); font-size: 0.82rem; }
+.pack-topbar .progress-wrap { margin-top: 2px; }
 .pack-main { max-width: 860px; margin: 0 auto; padding: 12px 12px 96px; }
 
 .pack-screen .sync-dot { font-size: 0.75rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; white-space: nowrap; margin-left: 8px; }
@@ -103,6 +103,35 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   margin-bottom: 12px;
 }
 .pack-screen .muted-line { margin: 2px 0 0; color: var(--muted); font-size: 0.82rem; }
+
+.pack-screen .progress-track {
+  display: block;
+  height: 8px;
+  background: var(--surface-raised);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  overflow: hidden;
+  margin: 4px 0;
+  flex: 1;
+}
+.pack-screen .progress-track.slim { height: 6px; margin: 0; min-width: 60px; }
+.pack-screen .progress-bar { display: block; height: 100%; background: var(--brand); border-radius: 999px; transition: width 200ms ease; }
+.pack-screen .progress-wrap { display: flex; align-items: center; gap: 10px; }
+.pack-screen .progress-text { font-size: 0.8rem; color: var(--muted); white-space: nowrap; }
+
+.pack-screen .chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0 0; }
+.pack-screen .chip {
+  display: inline-block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand);
+}
+.pack-screen .chip-btn { border: 1px solid transparent; cursor: pointer; }
+.pack-screen .chip-btn.is-active { background: var(--brand); color: #fff; }
+.pack-screen .filter-row { margin-bottom: 10px; }
 .pack-screen .empty-note { color: var(--muted); font-size: 0.88rem; padding: 12px 4px; text-align: center; list-style: none; }
 
 .pack-screen .icon-btn {
@@ -145,12 +174,6 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 }
 
 /* ------------------------------------------------------------ trip detail */
-.pack-screen .trip-header-top { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
-.pack-screen .trip-header-top h2 { margin: 0; font-size: 1.2rem; }
-.pack-screen .whoami { display: flex; align-items: center; gap: 8px; }
-.pack-screen .whoami-caption { font-size: 0.85rem; color: var(--muted); font-weight: 600; }
-.pack-screen .whoami-value { font-weight: 700; }
-
 .pack-screen .top-tab-bar .tab-btn { font-size: 0.98rem; }
 .pack-screen .itinerary-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 
@@ -348,9 +371,10 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   margin: 0;
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.18);
 }
-.pack-screen.add-panel-collapsed .add-card { display: none; }
-.pack-screen .add-layout { display: grid; gap: 8px; position: relative; }
-.pack-screen .add-row { display: flex; gap: 8px; }
+.pack-screen .add-layout { display: grid; gap: 6px; position: relative; }
+.pack-screen .add-quick-row { display: flex; gap: 8px; }
+.pack-screen .add-quick-row .add-item-input { flex: 1; }
+.pack-screen .add-row { display: flex; gap: 8px; margin-top: 6px; }
 .pack-screen .add-row > * { flex: 1; }
 .pack-screen .add-row input[type="number"] { max-width: 84px; flex: none; }
 .pack-screen .add-submit-btn {
@@ -358,11 +382,23 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   background: var(--brand);
   color: #fff;
   border-radius: 10px;
-  padding: 12px;
+  padding: 12px 18px;
   min-height: 46px;
   font-weight: 700;
   cursor: pointer;
+  flex: none;
 }
+.pack-screen .add-more { font-size: 0.82rem; }
+.pack-screen .add-more summary {
+  color: var(--muted);
+  font-weight: 600;
+  cursor: pointer;
+  padding: 4px 0;
+  list-style: none;
+}
+.pack-screen .add-more summary::-webkit-details-marker { display: none; }
+.pack-screen .add-more summary::before { content: "› "; }
+.pack-screen .add-more[open] summary::before { content: "⌄ "; }
 .pack-screen .item-options {
   position: absolute;
   bottom: calc(100% + 6px);
@@ -393,23 +429,6 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .item-option:last-child { border-bottom: none; }
 .pack-screen .item-option.is-active { background: var(--brand-soft); }
 
-.pack-screen .add-fab-btn,
-.pack-screen .pack-options-fab {
-  position: fixed;
-  bottom: 16px;
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  border: 1px solid var(--border);
-  background: var(--brand);
-  color: #fff;
-  font-size: 1.5rem;
-  z-index: 511;
-  cursor: pointer;
-  box-shadow: 0 6px 18px rgb(0 0 0 / 0.22);
-}
-.pack-screen .add-fab-btn { right: 16px; }
-
 .pack-screen .options-menu {
   position: fixed;
   top: 60px;
@@ -436,7 +455,6 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   transition: opacity 160ms ease;
   z-index: 8;
 }
-.pack-screen.add-panel-open::before,
 .pack-screen.options-menu-open::before { opacity: 1; }
 
 /* ----------------------------------------------------------------- modals */

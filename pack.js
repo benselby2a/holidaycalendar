@@ -46,7 +46,6 @@
   const WHOAMI_KEY = "packing_list_whoami";
   const ITINERARY_VIEW_KEY = "packing_list_itinerary_view";
   const TOP_TAB_KEY = "packing_list_top_tab";
-  const MERGEABLE_DAY_FIELDS = ["accommodation", "transport", "breakfast", "lunch", "dinner", "notes"];
   const TABLE_ORDER = ["travellers", "trip_meta", "trip_days", "standard_items", "packing_items"];
 
   // Hardcoded on purpose: exactly two people ever use this app. Maps the
@@ -91,7 +90,8 @@
   let checkToastTimer = null;
   let standardFeedbackTimer = null;
   let suggestionActiveIndex = -1;
-  let syncInterval = null;
+  let categoryManuallySet = false;
+  let itinerarySyncDebounce = null;
 
   // ---------------------------------------------------------------------
   // Mount / lifecycle
@@ -130,7 +130,7 @@
     el.standardSeasonsInput.innerHTML = checkboxGridHtml("standard-season", SEASONS.filter((s) => s !== "Any"));
     el.standardTypesInput.innerHTML = checkboxGridHtml("standard-type", TRIP_TYPES);
 
-    setAddCardCollapsed(true);
+    categoryManuallySet = false;
     await refreshCurrentUser();
     await loadLocal(holidayId);
     render();
@@ -149,13 +149,17 @@
     await inferWhoami();
     render();
 
-    clearInterval(syncInterval);
-    syncInterval = setInterval(syncNow, 15000);
+    // No periodic background sync — a timer firing mid-edit is exactly
+    // what was overwriting itinerary input. Every mutation already
+    // triggers its own sync right after saving (immediately for
+    // clicks/toggles, debounced for itinerary text fields — see
+    // scheduleItinerarySync()), which is enough to stay in sync without
+    // ever re-rendering out from under someone still typing.
   }
 
   function close() {
     if (!root) return;
-    clearInterval(syncInterval);
+    clearTimeout(itinerarySyncDebounce);
     root.classList.add("hidden");
     root.innerHTML = "";
     document.documentElement.classList.remove("pack-screen-active");
@@ -267,9 +271,17 @@
   function shellHtml() {
     return `
       <header class="pack-topbar">
-        <button id="pack-back-btn" class="pack-back-btn" type="button" aria-label="Back to calendar">‹</button>
-        <h1 class="pack-title">Pack<span id="pack-sync-bar" class="sync-dot sync-offline"><span id="pack-sync-text">Offline</span> <span id="pack-sync-meta" class="sync-meta"></span></span></h1>
-        <button id="pack-options-btn" class="pack-icon-btn" type="button" aria-label="Options">☰</button>
+        <div class="pack-topbar-row">
+          <button id="pack-back-btn" class="pack-back-link" type="button">Back to Trips</button>
+          <span id="pack-sync-bar" class="sync-dot sync-offline"><span id="pack-sync-text">Offline</span> <span id="pack-sync-meta" class="sync-meta"></span></span>
+        </div>
+        <h1 id="pack-trip-title" class="pack-title">PackIt</h1>
+        <p id="pack-trip-subtitle" class="pack-subtitle"></p>
+        <div id="pack-trip-chips" class="chip-row"></div>
+        <div class="progress-wrap">
+          <div class="progress-track"><div id="pack-progress-bar" class="progress-bar"></div></div>
+          <span id="pack-progress-text" class="progress-text"></span>
+        </div>
       </header>
 
       <div id="pack-options-menu" class="options-menu" hidden>
@@ -282,25 +294,6 @@
       </div>
 
       <main class="pack-main">
-        <div class="trip-header card">
-          <div class="trip-header-top">
-            <div>
-              <h2 id="pack-trip-title">Trip</h2>
-              <p id="pack-trip-subtitle" class="muted-line"></p>
-            </div>
-          </div>
-          <div id="pack-trip-chips" class="chip-row"></div>
-          <div class="progress-wrap">
-            <div class="progress-track"><div id="pack-progress-bar" class="progress-bar"></div></div>
-            <span id="pack-progress-text" class="progress-text"></span>
-          </div>
-        </div>
-
-        <div class="whoami card">
-          <span class="whoami-caption">I am</span>
-          <span id="pack-whoami-label" class="whoami-value">…</span>
-        </div>
-
         <div class="tab-bar top-tab-bar">
           <button id="pack-top-tab-itinerary-btn" class="tab-btn is-active" type="button" data-top-tab="itinerary">Itinerary</button>
           <button id="pack-top-tab-packing-btn" class="tab-btn" type="button" data-top-tab="packing">Packing</button>
@@ -345,25 +338,29 @@
       <section class="card add-card" id="pack-add-card" hidden>
         <form id="pack-add-form" autocomplete="off">
           <div class="add-layout">
-            <input id="pack-item-entry" class="add-item-input" placeholder="Type item here" required
-              autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="done" />
+            <div class="add-quick-row">
+              <input id="pack-item-entry" class="add-item-input" placeholder="Type item here" required
+                autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" inputmode="text" enterkeyhint="done" />
+              <button id="pack-add-item-btn" class="add-submit-btn" type="submit">Add</button>
+            </div>
             <div id="pack-item-options" class="item-options" hidden></div>
-            <div class="add-row">
-              <select id="pack-item-category" aria-label="Category"></select>
-              <input id="pack-item-qty" type="number" min="1" max="99" value="1" aria-label="Quantity" />
-            </div>
-            <div class="add-row">
-              <select id="pack-item-scope" aria-label="List">
-                <option value="personal">My list</option>
-                <option value="shared">Shared list</option>
-              </select>
-              <select id="pack-item-owner" aria-label="Owner"></select>
-            </div>
-            <button id="pack-add-item-btn" class="add-submit-btn" type="submit">Add Item</button>
+            <details class="add-more">
+              <summary>More options</summary>
+              <div class="add-row">
+                <select id="pack-item-category" aria-label="Category"></select>
+                <input id="pack-item-qty" type="number" min="1" max="99" value="1" aria-label="Quantity" />
+              </div>
+              <div class="add-row">
+                <select id="pack-item-scope" aria-label="List">
+                  <option value="personal">My list</option>
+                  <option value="shared">Shared list</option>
+                </select>
+                <select id="pack-item-owner" aria-label="Owner"></select>
+              </div>
+            </details>
           </div>
         </form>
       </section>
-      <button id="pack-add-fab-btn" class="add-fab-btn" type="button" aria-label="Add new item" hidden>＋</button>
 
       <div id="pack-trip-settings-modal" class="modal">
         <div class="modal-content">
@@ -538,7 +535,6 @@
     el.syncText = q("pack-sync-text");
     el.syncMeta = q("pack-sync-meta");
     el.backBtn = q("pack-back-btn");
-    el.optionsBtn = q("pack-options-btn");
     el.optionsMenu = q("pack-options-menu");
     el.undoBtn = q("pack-undo-btn");
     el.settingsBtn = q("pack-settings-btn");
@@ -552,8 +548,6 @@
     el.tripChips = q("pack-trip-chips");
     el.progressBar = q("pack-progress-bar");
     el.progressText = q("pack-progress-text");
-
-    el.whoamiLabel = q("pack-whoami-label");
 
     el.topTabBtns = Array.from(root.querySelectorAll(".top-tab-bar .tab-btn"));
     el.topPaneItinerary = q("pack-top-pane-itinerary");
@@ -577,7 +571,6 @@
 
     el.addCard = q("pack-add-card");
     el.addForm = q("pack-add-form");
-    el.addFabBtn = q("pack-add-fab-btn");
     el.itemName = q("pack-item-entry");
     el.itemOptions = q("pack-item-options");
     el.itemCategory = q("pack-item-category");
@@ -647,7 +640,6 @@
 
   function bindEvents() {
     el.backBtn.addEventListener("click", close);
-    el.optionsBtn.addEventListener("click", toggleOptionsMenu);
     el.undoBtn.addEventListener("click", undoLastAction);
     el.settingsBtn.addEventListener("click", openSettingsModal);
     el.travellersBtn.addEventListener("click", openTravellersModal);
@@ -670,11 +662,11 @@
     el.itineraryViewToggle.addEventListener("click", onItineraryViewToggleClick);
 
     el.addForm.addEventListener("submit", onAddItemSubmit);
-    el.addFabBtn.addEventListener("click", () => setAddCardCollapsed(false));
     el.itemName.addEventListener("input", renderNameSuggestions);
     el.itemName.addEventListener("keydown", onSuggestionKeyDown);
     el.itemOptions.addEventListener("click", onSuggestionClick);
     el.itemScope.addEventListener("change", updateOwnerSelectVisibility);
+    el.itemCategory.addEventListener("change", () => { categoryManuallySet = true; });
 
     el.closeSettingsBtn.addEventListener("click", () => closeModal(el.settingsModal));
     el.settingsForm.addEventListener("submit", onSettingsFormSubmit);
@@ -706,13 +698,7 @@
     el.resolveConflictBtn.addEventListener("click", acknowledgeConflict);
 
     root.addEventListener("click", (e) => {
-      if (!el.optionsMenu.hidden && !e.target.closest("#pack-options-btn") && !e.target.closest("#pack-options-menu")) {
-        closeOptionsMenu();
-      }
       if (!el.itemOptions.hidden && !e.target.closest(".add-layout")) hideSuggestions();
-      if (root.classList.contains("add-panel-open") && !e.target.closest(".add-card") && !e.target.closest(".add-fab-btn")) {
-        setAddCardCollapsed(true);
-      }
     });
 
     root.addEventListener("keydown", (e) => {
@@ -747,13 +733,11 @@
     renderSyncBar();
     el.undoBtn.disabled = !state.lastAction;
     el.undoBtn.textContent = state.lastAction ? `Undo ${state.lastAction.label}` : "Undo";
-    el.addCard.hidden = false;
-    el.addFabBtn.hidden = !root.classList.contains("add-panel-collapsed");
 
     const trip = currentTrip();
     if (!trip) return;
 
-    el.tripTitle.textContent = trip.name || "Trip";
+    el.tripTitle.textContent = `PackIt - ${trip.name || "Trip"}`;
     const days = tripDays(trip);
     const bits = [trip.destination, formatTripDates(trip), days ? `${days} ${days === 1 ? "day" : "days"}` : ""].filter(Boolean);
     if (state.holiday.status) bits.push(state.holiday.status);
@@ -770,7 +754,6 @@
     el.progressBar.style.width = `${pct}%`;
     el.progressText.textContent = `${packed}/${items.length} packed`;
 
-    renderWhoamiLabel();
     renderOwnerSelect();
     applyTopTab();
     setTabButtons();
@@ -785,6 +768,7 @@
     el.topTabBtns.forEach((btn) => btn.classList.toggle("is-active", btn.dataset.topTab === state.topTab));
     el.topPaneItinerary.hidden = state.topTab !== "itinerary";
     el.topPanePacking.hidden = state.topTab !== "packing";
+    el.addCard.hidden = state.topTab !== "packing";
   }
 
   function setTopTab(tab) {
@@ -829,13 +813,6 @@
     const btn = e.target.closest("[data-itinerary-view]");
     if (!btn) return;
     setItineraryView(btn.dataset.itineraryView);
-  }
-
-  // Read-only: "I am" is decided entirely by inferWhoami() from the signed-in
-  // account, never picked here. This just displays the result (or explains
-  // why there isn't one yet) — it must never assign state.whoami itself.
-  function renderWhoamiLabel() {
-    el.whoamiLabel.textContent = travellerName(state.whoami) || "Unrecognised account";
   }
 
   function renderOwnerSelect() {
@@ -1048,6 +1025,18 @@
   function renderItinerary() {
     const trip = currentTrip();
     if (!trip) return;
+
+    // Never rebuild the day cards while one of their own inputs is
+    // focused — that would destroy the element mid-edit and lose whatever
+    // has been typed since the last blur-triggered save. The visible
+    // input already shows exactly what the user typed; nothing here
+    // needs to happen synchronously right now. The next render (once
+    // focus leaves the itinerary) picks up anything that changed
+    // meanwhile. Table view has no inputs, so it's never guarded.
+    if (state.itineraryView !== "table" && el.itineraryDays.contains(document.activeElement)) {
+      return;
+    }
+
     const dates = tripDateList(trip);
     if (!dates.length) {
       el.itineraryDays.hidden = true;
@@ -1088,11 +1077,37 @@
     return { runStart, rowSpan };
   }
 
+  const DAY_FIELD_LABELS = {
+    accommodation: "Accommodation",
+    transport: "Transport",
+    breakfast: "Breakfast",
+    lunch: "Lunch",
+    dinner: "Dinner",
+    notes: "Notes"
+  };
+
+  // Rendering order: everything before the Morning/Afternoon/Evening plan
+  // columns, then "notes" after them — matches the cards view's own field
+  // order (accommodation/transport/meals, then plans, then notes).
+  const DAY_FIELDS_BEFORE_PLANS = ["accommodation", "transport", "breakfast", "lunch", "dinner"];
+
   function itineraryTableHtml(trip, dates) {
     const cell = (v) => escapeHtml(v || "—");
+    const rowFor = (dateStr) => dayRowFor(trip.id, dateStr) || {};
+
+    // Skip a column entirely (header + cells) when no day in the trip has
+    // anything in it — most trips only ever fill in a handful of these.
+    const hasData = (field) => dates.some((d) => (rowFor(d)[field] || "").trim());
+    const visibleBefore = DAY_FIELDS_BEFORE_PLANS.filter(hasData);
+    const notesVisible = hasData("notes");
+    const plansHaveData = dates.some((d) => {
+      const row = rowFor(d);
+      return Boolean(row.plan_morning || row.plan_afternoon || row.plan_evening || row.plan_all_day_text);
+    });
+
     const merges = {};
-    for (const field of MERGEABLE_DAY_FIELDS) {
-      merges[field] = computeMergeRuns(dates, (dateStr) => dayRowFor(trip.id, dateStr)?.[field] || "");
+    for (const field of [...visibleBefore, ...(notesVisible ? ["notes"] : [])]) {
+      merges[field] = computeMergeRuns(dates, (dateStr) => rowFor(dateStr)[field] || "");
     }
     const mergeCell = (field, row, i) => {
       const { runStart, rowSpan } = merges[field];
@@ -1103,37 +1118,38 @@
 
     const rows = dates
       .map((dateStr, i) => {
-        const row = dayRowFor(trip.id, dateStr) || {};
-        const allDay = Boolean(row.plan_all_day);
-        const span = row.plan_all_day_span === "full_day" ? "full_day" : "morning_afternoon";
-        let planCells;
-        if (allDay && span === "full_day") {
-          planCells = `<td colspan="3" class="all-day-cell">${cell(row.plan_all_day_text)}</td>`;
-        } else if (allDay) {
-          planCells = `<td colspan="2" class="all-day-cell">${cell(row.plan_all_day_text)}</td><td>${cell(row.plan_evening)}</td>`;
-        } else {
-          planCells = `<td>${cell(row.plan_morning)}</td><td>${cell(row.plan_afternoon)}</td><td>${cell(row.plan_evening)}</td>`;
+        const row = rowFor(dateStr);
+        let planCells = "";
+        if (plansHaveData) {
+          const allDay = Boolean(row.plan_all_day);
+          const span = row.plan_all_day_span === "full_day" ? "full_day" : "morning_afternoon";
+          if (allDay && span === "full_day") {
+            planCells = `<td colspan="3" class="all-day-cell">${cell(row.plan_all_day_text)}</td>`;
+          } else if (allDay) {
+            planCells = `<td colspan="2" class="all-day-cell">${cell(row.plan_all_day_text)}</td><td>${cell(row.plan_evening)}</td>`;
+          } else {
+            planCells = `<td>${cell(row.plan_morning)}</td><td>${cell(row.plan_afternoon)}</td><td>${cell(row.plan_evening)}</td>`;
+          }
         }
         return `
           <tr>
             <td class="day-table-date">${escapeHtml(formatDayHeading(dateStr, i + 1))}</td>
-            ${mergeCell("accommodation", row, i)}
-            ${mergeCell("transport", row, i)}
-            ${mergeCell("breakfast", row, i)}
-            ${mergeCell("lunch", row, i)}
-            ${mergeCell("dinner", row, i)}
+            ${visibleBefore.map((field) => mergeCell(field, row, i)).join("")}
             ${planCells}
-            ${mergeCell("notes", row, i)}
+            ${notesVisible ? mergeCell("notes", row, i) : ""}
           </tr>`;
       })
       .join("");
+
+    const beforeHeadCells = visibleBefore.map((field) => `<th>${DAY_FIELD_LABELS[field]}</th>`).join("");
+    const planHeadCells = plansHaveData ? `<th>Morning</th><th>Afternoon</th><th>Evening</th>` : "";
+    const notesHeadCell = notesVisible ? `<th>${DAY_FIELD_LABELS.notes}</th>` : "";
 
     return `
       <div class="table-scroll">
         <table class="itinerary-table">
           <thead><tr>
-            <th>Day</th><th>Accommodation</th><th>Transport</th><th>Breakfast</th><th>Lunch</th><th>Dinner</th>
-            <th>Morning</th><th>Afternoon</th><th>Evening</th><th>Notes</th>
+            <th>Day</th>${beforeHeadCells}${planHeadCells}${notesHeadCell}
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
@@ -1218,7 +1234,16 @@
     await persistLocal();
     await enqueue(row, "trip_days");
     renderItinerary();
-    syncNow();
+    scheduleItinerarySync();
+  }
+
+  // Coalesces rapid field-to-field edits (e.g. tabbing through a day card)
+  // into a single sync instead of firing one per blur — the save itself
+  // (persistLocal/enqueue above) already happened immediately, this only
+  // delays the network round-trip and the render() at the end of syncNow().
+  function scheduleItinerarySync() {
+    clearTimeout(itinerarySyncDebounce);
+    itinerarySyncDebounce = setTimeout(syncNow, 800);
   }
 
   async function onItineraryDaysClick(e) {
@@ -1264,7 +1289,11 @@
     if (scope === "personal" && !travellerId) return showToast("Add a traveller first");
 
     const quantity = clampInt(el.itemQty.value, 1, 99, 1);
-    const category = el.itemCategory.value || guessCategory(name) || "Other";
+    // "More options" is collapsed by default, so most adds never touch the
+    // category select — guess it from the name instead of silently taking
+    // whatever the select's untouched first option happens to be. Once the
+    // user has deliberately picked a category, respect it.
+    const category = (categoryManuallySet ? el.itemCategory.value : guessCategory(name)) || el.itemCategory.value || "Other";
 
     const item = {
       id: crypto.randomUUID(), holiday_id: trip.id, household_id: APP_CONFIG.householdId,
@@ -1279,8 +1308,11 @@
 
     el.itemName.value = "";
     el.itemQty.value = "1";
+    el.itemCategory.value = "Clothing";
+    categoryManuallySet = false;
     hideSuggestions();
     render();
+    el.itemName.focus();
     showToast(`Added ${name}`);
     syncNow();
   }
@@ -2290,14 +2322,6 @@
   function closeOptionsMenu() {
     el.optionsMenu.hidden = true;
     root.classList.remove("options-menu-open");
-  }
-
-  function setAddCardCollapsed(collapsed) {
-    root.classList.toggle("add-panel-collapsed", collapsed);
-    root.classList.toggle("add-panel-open", !collapsed);
-    el.addFabBtn.hidden = !collapsed;
-    if (!collapsed) el.itemName.focus();
-    else hideSuggestions();
   }
 
   // ---------------------------------------------------------------------
