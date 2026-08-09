@@ -62,6 +62,7 @@
 
   const state = {
     holiday: null,
+    loading: true,
     tripMeta: null,
     travellers: [],
     tripDays: [],
@@ -70,7 +71,6 @@
     pending: [],
     conflictQueue: [],
     syncing: false,
-    online: navigator.onLine,
     supabaseReachable: true,
     lastSyncError: "",
     lastSyncAt: null,
@@ -82,7 +82,8 @@
     standardFilter: "",
     wizard: null,
     itineraryView: "cards",
-    topTab: "itinerary"
+    topTab: "itinerary",
+    expandedDays: new Set()
   };
 
   let root = null;
@@ -92,6 +93,13 @@
   let suggestionActiveIndex = -1;
   let categoryManuallySet = false;
   let itinerarySyncDebounce = null;
+  // Bumped on every open() call; a stale continuation (e.g. this trip's
+  // load is still in flight when the user backs out and opens a different
+  // one) checks this before touching `el`/`state` so it can't write a
+  // finished fetch's data into the new screen's DOM — cacheEls() re-points
+  // every el.* entry at the new markup, but doesn't stop an old promise
+  // chain from resuming and using those same shared references.
+  let openToken = 0;
 
   // ---------------------------------------------------------------------
   // Mount / lifecycle
@@ -108,6 +116,8 @@
 
   async function open(holidayId) {
     if (!holidayId) return;
+    const myToken = ++openToken;
+
     ensureRoot();
     root.classList.remove("hidden");
     document.documentElement.classList.add("pack-screen-active");
@@ -116,10 +126,12 @@
     bindEvents();
 
     state.holiday = { id: holidayId, location: "", country: "", startDate: null, endDate: null, status: "" };
+    state.loading = true;
     state.tab = "mine";
     state.sharedOwnerFilter = "all";
     state.itineraryView = localStorage.getItem(ITINERARY_VIEW_KEY) === "table" ? "table" : "cards";
     state.topTab = localStorage.getItem(TOP_TAB_KEY) === "packing" ? "packing" : "itinerary";
+    state.expandedDays = new Set();
 
     el.itemCategory.innerHTML = optionsHtml(CATEGORIES);
     el.standardCategoryInput.innerHTML = optionsHtml(CATEGORIES);
@@ -132,10 +144,13 @@
 
     categoryManuallySet = false;
     await refreshCurrentUser();
+    if (myToken !== openToken) return;
     await loadLocal(holidayId);
+    if (myToken !== openToken) return;
     render();
 
     await fetchHolidayDetails(holidayId);
+    if (myToken !== openToken) return;
     render();
 
     // Awaited (not fire-and-forget) so travellers pulled from the server —
@@ -146,8 +161,14 @@
     // genuinely don't exist remotely — calling it any earlier risks
     // creating a duplicate of a traveller someone else already added.
     await syncNow();
+    if (myToken !== openToken) return;
     await inferWhoami();
+    if (myToken !== openToken) return;
+
+    state.loading = false;
     render();
+    el.loading.hidden = true;
+    el.main.hidden = false;
 
     // No periodic background sync — a timer firing mid-edit is exactly
     // what was overwriting itinerary input. Every mutation already
@@ -159,6 +180,7 @@
 
   function close() {
     if (!root) return;
+    openToken++;
     clearTimeout(itinerarySyncDebounce);
     root.classList.add("hidden");
     root.innerHTML = "";
@@ -273,7 +295,6 @@
       <header class="pack-topbar">
         <div class="pack-topbar-row">
           <button id="pack-back-btn" class="pack-back-link" type="button">Back to Trips</button>
-          <span id="pack-sync-bar" class="sync-dot sync-offline"><span id="pack-sync-text">Offline</span> <span id="pack-sync-meta" class="sync-meta"></span></span>
         </div>
         <h1 id="pack-trip-title" class="pack-title">PackIt</h1>
         <p id="pack-trip-subtitle" class="pack-subtitle"></p>
@@ -293,7 +314,11 @@
         <button id="pack-unpack-btn" class="icon-btn" type="button">Unpack Everything</button>
       </div>
 
-      <main class="pack-main">
+      <div id="pack-loading" class="pack-loading">
+        <div class="spinner" aria-label="Loading"></div>
+      </div>
+
+      <main class="pack-main" id="pack-main" hidden>
         <div class="tab-bar top-tab-bar">
           <button id="pack-top-tab-itinerary-btn" class="tab-btn is-active" type="button" data-top-tab="itinerary">Itinerary</button>
           <button id="pack-top-tab-packing-btn" class="tab-btn" type="button" data-top-tab="packing">Packing</button>
@@ -397,6 +422,16 @@
             <button class="icon-btn primary-btn" type="submit">Add</button>
           </form>
           <p class="muted-line">Deleting a traveller keeps their items but marks them unassigned.</p>
+        </div>
+      </div>
+
+      <div id="pack-day-edit-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 id="pack-day-edit-title">Day</h2>
+            <button id="pack-close-day-edit-btn" class="icon-btn" type="button">✕</button>
+          </div>
+          <div id="pack-day-edit-body"></div>
         </div>
       </div>
 
@@ -529,10 +564,9 @@
   function cacheEls() {
     const q = (id) => root.querySelector(`#${id}`);
 
-    el.syncBar = q("pack-sync-bar");
-    el.syncText = q("pack-sync-text");
-    el.syncMeta = q("pack-sync-meta");
     el.backBtn = q("pack-back-btn");
+    el.loading = q("pack-loading");
+    el.main = q("pack-main");
     el.optionsMenu = q("pack-options-menu");
     el.undoBtn = q("pack-undo-btn");
     el.settingsBtn = q("pack-settings-btn");
@@ -588,6 +622,11 @@
     el.travellersList = q("pack-travellers-list");
     el.travellerForm = q("pack-traveller-form");
     el.travellerNameInput = q("pack-traveller-name-input");
+
+    el.dayEditModal = q("pack-day-edit-modal");
+    el.closeDayEditBtn = q("pack-close-day-edit-btn");
+    el.dayEditTitle = q("pack-day-edit-title");
+    el.dayEditBody = q("pack-day-edit-body");
 
     el.wizardModal = q("pack-wizard-modal");
     el.closeWizardBtn = q("pack-close-wizard-btn");
@@ -657,7 +696,11 @@
     el.sharedOwnerFilter.addEventListener("click", onSharedFilterClick);
     el.itineraryDays.addEventListener("change", onItineraryFieldChange);
     el.itineraryDays.addEventListener("click", onItineraryDaysClick);
+    // "toggle" doesn't bubble, so this only sees <details> elements
+    // opening/closing via the capture phase, not normal delegation.
+    el.itineraryDays.addEventListener("toggle", onDayCardToggle, true);
     el.itineraryViewToggle.addEventListener("click", onItineraryViewToggleClick);
+    el.itineraryTableWrap.addEventListener("click", onItineraryTableClick);
 
     el.addForm.addEventListener("submit", onAddItemSubmit);
     el.itemName.addEventListener("input", renderNameSuggestions);
@@ -672,6 +715,13 @@
     el.closeTravellersBtn.addEventListener("click", () => closeModal(el.travellersModal));
     el.travellerForm.addEventListener("submit", onTravellerFormSubmit);
     el.travellersList.addEventListener("click", onTravellersListClick);
+
+    el.closeDayEditBtn.addEventListener("click", () => closeModal(el.dayEditModal));
+    // Reuses the cards view's own handlers — both operate purely via
+    // data-day-date/data-day-field/data-apply-all-field, so the popup's
+    // content works identically without any separate logic.
+    el.dayEditBody.addEventListener("change", onItineraryFieldChange);
+    el.dayEditBody.addEventListener("click", onItineraryDaysClick);
 
     el.closeWizardBtn.addEventListener("click", () => closeModal(el.wizardModal));
     el.wizardNextBtn.addEventListener("click", wizardNext);
@@ -728,7 +778,6 @@
   }
 
   function render() {
-    renderSyncBar();
     el.undoBtn.disabled = !state.lastAction;
     el.undoBtn.textContent = state.lastAction ? `Undo ${state.lastAction.label}` : "Undo";
 
@@ -766,7 +815,7 @@
     el.topTabBtns.forEach((btn) => btn.classList.toggle("is-active", btn.dataset.topTab === state.topTab));
     el.topPaneItinerary.hidden = state.topTab !== "itinerary";
     el.topPanePacking.hidden = state.topTab !== "packing";
-    el.addCard.hidden = state.topTab !== "packing";
+    el.addCard.hidden = state.loading || state.topTab !== "packing";
   }
 
   function setTopTab(tab) {
@@ -1162,7 +1211,10 @@
         }
         return `
           <tr>
-            <td class="day-table-date">${escapeHtml(formatDayHeading(dateStr, i + 1))}</td>
+            <td class="day-table-date">
+              <button type="button" class="edit-day-btn" data-edit-day="${dateStr}" aria-label="Edit ${escapeHtml(formatDayHeading(dateStr, i + 1))}">✎</button>
+              ${escapeHtml(formatDayHeading(dateStr, i + 1))}
+            </td>
             ${visibleBefore.map((field) => mergeCell(field, row, i)).join("")}
             ${planCells}
             ${notesVisible ? mergeCell("notes", row, i) : ""}
@@ -1190,8 +1242,10 @@
     return `Day ${dayNumber} · ${label}`;
   }
 
-  function dayCardHtml(trip, dateStr, dayNumber) {
-    const row = dayRowFor(trip.id, dateStr) || {};
+  // Shared between the collapsible cards view and the table view's
+  // per-row edit popup, so there's exactly one place that knows what a
+  // day's editable fields look like.
+  function dayFieldsBodyHtml(row) {
     const allDay = Boolean(row.plan_all_day);
     const span = row.plan_all_day_span === "full_day" ? "full_day" : "morning_afternoon";
     const showEveningField = !allDay || span === "morning_afternoon";
@@ -1217,35 +1271,64 @@
         </div>`;
 
     return `
-      <div class="day-card card" data-day-date="${dateStr}">
-        <div class="day-card-head"><span class="day-card-date">${escapeHtml(formatDayHeading(dateStr, dayNumber))}</span></div>
-        <div class="day-field-row">
-          <div class="field-with-action">
-            <div class="field-with-action-head">
-              <span class="field-label">Accommodation</span>
-              <button type="button" class="apply-all-btn" data-apply-all-field="accommodation">Apply to all</button>
-            </div>
-            <input type="text" data-day-field="accommodation" value="${val(row.accommodation)}" placeholder="Hotel / Airbnb" />
+      <div class="day-field-row">
+        <div class="field-with-action">
+          <div class="field-with-action-head">
+            <span class="field-label">Accommodation</span>
+            <button type="button" class="apply-all-btn" data-apply-all-field="accommodation">Apply to all</button>
           </div>
-          <label>Transport<input type="text" data-day-field="transport" value="${val(row.transport)}" placeholder="Flight / train / taxi" /></label>
+          <input type="text" data-day-field="accommodation" value="${val(row.accommodation)}" placeholder="Hotel / Airbnb" />
         </div>
-        <div class="day-field-row three-col">
-          <label>Breakfast<input type="text" data-day-field="breakfast" value="${val(row.breakfast)}" /></label>
-          <label>Lunch<input type="text" data-day-field="lunch" value="${val(row.lunch)}" /></label>
-          <label>Dinner<input type="text" data-day-field="dinner" value="${val(row.dinner)}" /></label>
+        <label>Transport<input type="text" data-day-field="transport" value="${val(row.transport)}" placeholder="Flight / train / taxi" /></label>
+      </div>
+      <div class="day-field-row three-col">
+        <label>Breakfast<input type="text" data-day-field="breakfast" value="${val(row.breakfast)}" /></label>
+        <label>Lunch<input type="text" data-day-field="lunch" value="${val(row.lunch)}" /></label>
+        <label>Dinner<input type="text" data-day-field="dinner" value="${val(row.dinner)}" /></label>
+      </div>
+      <div class="day-plans">
+        <div class="day-plans-head">
+          <span class="day-plans-label">Plans</span>
+          <label class="switch-row">
+            <input type="checkbox" data-day-field="plan_all_day"${allDay ? " checked" : ""} />
+            <span>All day</span>
+          </label>
         </div>
-        <div class="day-plans">
-          <div class="day-plans-head">
-            <span class="day-plans-label">Plans</span>
-            <label class="switch-row">
-              <input type="checkbox" data-day-field="plan_all_day"${allDay ? " checked" : ""} />
-              <span>All day</span>
-            </label>
-          </div>
-          ${plansHtml}
+        ${plansHtml}
+      </div>
+      <label>Notes<textarea data-day-field="notes" rows="2" placeholder="Anything else">${val(row.notes)}</textarea></label>`;
+  }
+
+  // A short at-a-glance line shown in the collapsed card's summary, so
+  // there's some indication of what a day holds before expanding it.
+  function dayCardPreview(row) {
+    const plan = row.plan_all_day_text || row.plan_morning || row.plan_afternoon || row.plan_evening;
+    return [row.accommodation, plan].filter(Boolean).join(" · ");
+  }
+
+  function dayCardHtml(trip, dateStr, dayNumber) {
+    const row = dayRowFor(trip.id, dateStr) || {};
+    const isOpen = state.expandedDays.has(dateStr);
+    const preview = dayCardPreview(row);
+
+    return `
+      <details class="day-card card" data-day-date="${dateStr}"${isOpen ? " open" : ""}>
+        <summary class="day-card-head">
+          <span class="day-card-date">${escapeHtml(formatDayHeading(dateStr, dayNumber))}</span>
+          ${preview ? `<span class="day-card-preview muted-line">${escapeHtml(preview)}</span>` : ""}
+        </summary>
+        <div class="day-card-body day-fields">
+          ${dayFieldsBodyHtml(row)}
         </div>
-        <label>Notes<textarea data-day-field="notes" rows="2" placeholder="Anything else">${val(row.notes)}</textarea></label>
-      </div>`;
+      </details>`;
+  }
+
+  function onDayCardToggle(e) {
+    const details = e.target;
+    if (!details.matches || !details.matches("[data-day-date]")) return;
+    const dateStr = details.dataset.dayDate;
+    if (details.open) state.expandedDays.add(dateStr);
+    else state.expandedDays.delete(dateStr);
   }
 
   async function onItineraryFieldChange(e) {
@@ -1285,6 +1368,22 @@
     const input = card.querySelector(`[data-day-field="${field}"]`);
     if (!input) return;
     await applyFieldToAllDays(trip, field, input.value.trim() || null);
+  }
+
+  function onItineraryTableClick(e) {
+    const btn = e.target.closest("[data-edit-day]");
+    if (!btn) return;
+    openDayEditModal(btn.dataset.editDay);
+  }
+
+  function openDayEditModal(dateStr) {
+    const trip = currentTrip();
+    if (!trip) return;
+    const dayNumber = tripDateList(trip).indexOf(dateStr) + 1;
+    const row = dayRowFor(trip.id, dateStr) || {};
+    el.dayEditTitle.textContent = formatDayHeading(dateStr, dayNumber);
+    el.dayEditBody.innerHTML = `<div class="day-fields" data-day-date="${dateStr}">${dayFieldsBodyHtml(row)}</div>`;
+    openModal(el.dayEditModal);
   }
 
   async function applyFieldToAllDays(trip, field, value) {
@@ -2029,7 +2128,6 @@
   async function syncNow() {
     if (!db || state.syncing || !state.holiday) return;
     state.syncing = true;
-    renderSyncBar();
 
     while (state.pending.length) {
       const index = findNextPendingIndex();
@@ -2309,21 +2407,8 @@
   }
 
   // ---------------------------------------------------------------------
-  // Chrome: sync bar, toasts, modals, add panel
+  // Chrome: toasts, modals, add panel
   // ---------------------------------------------------------------------
-
-  function renderSyncBar() {
-    const pending = state.pending.length;
-    let label = "Offline", cls = "sync-offline";
-    if (state.syncing) { label = "Syncing"; cls = "sync-syncing"; }
-    else if (!state.online) { label = "Offline"; cls = "sync-offline"; }
-    else if (!state.supabaseReachable) { label = "No connection"; cls = "sync-offline"; }
-    else { label = "Synced"; cls = "sync-online"; }
-
-    el.syncBar.className = `sync-dot ${cls}`;
-    el.syncText.textContent = label;
-    el.syncMeta.textContent = pending ? `${pending} queued` : state.lastSyncError || "";
-  }
 
   function showToast(message) {
     el.checkToastText.textContent = message;
