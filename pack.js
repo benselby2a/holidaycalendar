@@ -44,7 +44,6 @@
   };
 
   const WHOAMI_KEY = "packing_list_whoami";
-  const ITINERARY_VIEW_KEY = "packing_list_itinerary_view";
   const TOP_TAB_KEY = "packing_list_top_tab";
   const TABLE_ORDER = ["travellers", "trip_meta", "trip_days", "standard_items", "packing_items"];
 
@@ -81,9 +80,7 @@
     editingStandardId: null,
     standardFilter: "",
     wizard: null,
-    itineraryView: "cards",
-    topTab: "itinerary",
-    expandedDays: new Set()
+    topTab: "itinerary"
   };
 
   let root = null;
@@ -92,7 +89,6 @@
   let standardFeedbackTimer = null;
   let suggestionActiveIndex = -1;
   let categoryManuallySet = false;
-  let itinerarySyncDebounce = null;
   // Bumped on every open() call; a stale continuation (e.g. this trip's
   // load is still in flight when the user backs out and opens a different
   // one) checks this before touching `el`/`state` so it can't write a
@@ -129,9 +125,7 @@
     state.loading = true;
     state.tab = "mine";
     state.sharedOwnerFilter = "all";
-    state.itineraryView = localStorage.getItem(ITINERARY_VIEW_KEY) === "table" ? "table" : "cards";
     state.topTab = localStorage.getItem(TOP_TAB_KEY) === "packing" ? "packing" : "itinerary";
-    state.expandedDays = new Set();
 
     el.itemCategory.innerHTML = optionsHtml(CATEGORIES);
     el.standardCategoryInput.innerHTML = optionsHtml(CATEGORIES);
@@ -170,18 +164,13 @@
     el.loading.hidden = true;
     el.main.hidden = false;
 
-    // No periodic background sync — a timer firing mid-edit is exactly
-    // what was overwriting itinerary input. Every mutation already
-    // triggers its own sync right after saving (immediately for
-    // clicks/toggles, debounced for itinerary text fields — see
-    // scheduleItinerarySync()), which is enough to stay in sync without
-    // ever re-rendering out from under someone still typing.
+    // No periodic background sync — every mutation already triggers its
+    // own sync right after saving.
   }
 
   function close() {
     if (!root) return;
     openToken++;
-    clearTimeout(itinerarySyncDebounce);
     root.classList.add("hidden");
     root.innerHTML = "";
     document.documentElement.classList.remove("pack-screen-active");
@@ -325,12 +314,7 @@
         </div>
 
         <div id="pack-top-pane-itinerary" class="pane">
-          <div class="tab-bar" id="pack-itinerary-view-toggle">
-            <button class="tab-btn is-active" type="button" data-itinerary-view="cards">Cards</button>
-            <button class="tab-btn" type="button" data-itinerary-view="table">Table</button>
-          </div>
-          <div id="pack-itinerary-days"></div>
-          <div id="pack-itinerary-table-wrap" hidden></div>
+          <div id="pack-itinerary-table-wrap"></div>
           <p id="pack-itinerary-empty" class="empty-note" hidden>Set trip dates in Holiday Calendar to plan each day.</p>
         </div>
 
@@ -432,6 +416,10 @@
             <button id="pack-close-day-edit-btn" class="icon-btn" type="button">✕</button>
           </div>
           <div id="pack-day-edit-body"></div>
+          <div class="db-actions">
+            <button id="pack-day-save-btn" class="icon-btn primary-btn" type="button">Save</button>
+            <button id="pack-day-cancel-btn" class="icon-btn" type="button">Cancel</button>
+          </div>
         </div>
       </div>
 
@@ -596,8 +584,6 @@
     el.sharedOwnerFilter = q("pack-shared-owner-filter");
     el.everyoneSummary = q("pack-everyone-summary");
 
-    el.itineraryViewToggle = q("pack-itinerary-view-toggle");
-    el.itineraryDays = q("pack-itinerary-days");
     el.itineraryTableWrap = q("pack-itinerary-table-wrap");
     el.itineraryEmpty = q("pack-itinerary-empty");
 
@@ -627,6 +613,8 @@
     el.closeDayEditBtn = q("pack-close-day-edit-btn");
     el.dayEditTitle = q("pack-day-edit-title");
     el.dayEditBody = q("pack-day-edit-body");
+    el.daySaveBtn = q("pack-day-save-btn");
+    el.dayCancelBtn = q("pack-day-cancel-btn");
 
     el.wizardModal = q("pack-wizard-modal");
     el.closeWizardBtn = q("pack-close-wizard-btn");
@@ -694,12 +682,6 @@
     el.everyoneSummary.addEventListener("click", onItemListClick);
     el.everyoneSummary.addEventListener("change", onItemListChange);
     el.sharedOwnerFilter.addEventListener("click", onSharedFilterClick);
-    el.itineraryDays.addEventListener("change", onItineraryFieldChange);
-    el.itineraryDays.addEventListener("click", onItineraryDaysClick);
-    // "toggle" doesn't bubble, so this only sees <details> elements
-    // opening/closing via the capture phase, not normal delegation.
-    el.itineraryDays.addEventListener("toggle", onDayCardToggle, true);
-    el.itineraryViewToggle.addEventListener("click", onItineraryViewToggleClick);
     el.itineraryTableWrap.addEventListener("click", onItineraryTableClick);
 
     el.addForm.addEventListener("submit", onAddItemSubmit);
@@ -717,11 +699,10 @@
     el.travellersList.addEventListener("click", onTravellersListClick);
 
     el.closeDayEditBtn.addEventListener("click", () => closeModal(el.dayEditModal));
-    // Reuses the cards view's own handlers — both operate purely via
-    // data-day-date/data-day-field/data-apply-all-field, so the popup's
-    // content works identically without any separate logic.
-    el.dayEditBody.addEventListener("change", onItineraryFieldChange);
-    el.dayEditBody.addEventListener("click", onItineraryDaysClick);
+    el.dayCancelBtn.addEventListener("click", () => closeModal(el.dayEditModal));
+    el.daySaveBtn.addEventListener("click", onDaySaveClick);
+    el.dayEditBody.addEventListener("change", onDayEditFieldChange);
+    el.dayEditBody.addEventListener("click", onDayEditApplyAllClick);
 
     el.closeWizardBtn.addEventListener("click", () => closeModal(el.wizardModal));
     el.wizardNextBtn.addEventListener("click", wizardNext);
@@ -807,7 +788,6 @@
     renderMine();
     renderShared();
     renderEveryone();
-    applyItineraryViewToggle();
     renderItinerary();
   }
 
@@ -843,24 +823,6 @@
     el.paneEveryone.hidden = state.tab !== "everyone";
   }
 
-  function applyItineraryViewToggle() {
-    el.itineraryViewToggle.querySelectorAll("[data-itinerary-view]").forEach((btn) => {
-      btn.classList.toggle("is-active", btn.dataset.itineraryView === state.itineraryView);
-    });
-  }
-
-  function setItineraryView(view) {
-    state.itineraryView = view === "table" ? "table" : "cards";
-    localStorage.setItem(ITINERARY_VIEW_KEY, state.itineraryView);
-    applyItineraryViewToggle();
-    renderItinerary();
-  }
-
-  function onItineraryViewToggleClick(e) {
-    const btn = e.target.closest("[data-itinerary-view]");
-    if (!btn) return;
-    setItineraryView(btn.dataset.itineraryView);
-  }
 
   function renderOwnerSelect() {
     const people = tripTravellers(state.holiday.id);
@@ -1073,38 +1035,17 @@
     const trip = currentTrip();
     if (!trip) return;
 
-    // Never rebuild the day cards while one of their own inputs is
-    // focused — that would destroy the element mid-edit and lose whatever
-    // has been typed since the last blur-triggered save. The visible
-    // input already shows exactly what the user typed; nothing here
-    // needs to happen synchronously right now. The next render (once
-    // focus leaves the itinerary) picks up anything that changed
-    // meanwhile. Table view has no inputs, so it's never guarded.
-    if (state.itineraryView !== "table" && el.itineraryDays.contains(document.activeElement)) {
-      return;
-    }
-
     const dates = tripDateList(trip);
     if (!dates.length) {
-      el.itineraryDays.hidden = true;
-      el.itineraryDays.innerHTML = "";
-      el.itineraryTableWrap.hidden = true;
       el.itineraryTableWrap.innerHTML = "";
       el.itineraryEmpty.hidden = false;
       return;
     }
+    // The table itself is read-only (editing happens in the day-edit
+    // popup, a separate piece of DOM) — safe to rebuild unconditionally,
+    // there's never a focused input inside it to lose.
     el.itineraryEmpty.hidden = true;
-    if (state.itineraryView === "table") {
-      el.itineraryDays.hidden = true;
-      el.itineraryDays.innerHTML = "";
-      el.itineraryTableWrap.hidden = false;
-      el.itineraryTableWrap.innerHTML = itineraryTableHtml(trip, dates);
-    } else {
-      el.itineraryTableWrap.hidden = true;
-      el.itineraryTableWrap.innerHTML = "";
-      el.itineraryDays.hidden = false;
-      el.itineraryDays.innerHTML = dates.map((dateStr, i) => dayCardHtml(trip, dateStr, i + 1)).join("");
-    }
+    el.itineraryTableWrap.innerHTML = itineraryTableHtml(trip, dates);
   }
 
   function computeMergeRuns(dates, getValue) {
@@ -1174,6 +1115,29 @@
       }
     }
     const visibleSlots = PLAN_SLOTS.filter((s) => slotVisible[s]);
+    const hasAnyColumn = visibleBefore.length > 0 || notesVisible || visibleSlots.length > 0;
+
+    if (!hasAnyColumn) {
+      const rows = dates
+        .map(
+          (dateStr, i) => `
+          <tr>
+            <td class="day-table-date">
+              <button type="button" class="edit-day-btn" data-edit-day="${dateStr}" aria-label="Edit ${escapeHtml(formatDayHeading(dateStr, i + 1))}">✎</button>
+              ${escapeHtml(formatDayHeading(dateStr, i + 1))}
+            </td>
+            <td class="empty-hint">Click Edit to add Details</td>
+          </tr>`
+        )
+        .join("");
+      return `
+        <div class="table-scroll">
+          <table class="itinerary-table">
+            <thead><tr><th>Day</th><th>Details</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>`;
+    }
 
     const merges = {};
     for (const field of [...visibleBefore, ...(notesVisible ? ["notes"] : [])]) {
@@ -1299,75 +1263,19 @@
       <label>Notes<textarea data-day-field="notes" rows="2" placeholder="Anything else">${val(row.notes)}</textarea></label>`;
   }
 
-  // A short at-a-glance line shown in the collapsed card's summary, so
-  // there's some indication of what a day holds before expanding it.
-  function dayCardPreview(row) {
-    const plan = row.plan_all_day_text || row.plan_morning || row.plan_afternoon || row.plan_evening;
-    return [row.accommodation, plan].filter(Boolean).join(" · ");
-  }
+  // The day-edit popup buffers all changes locally and only touches
+  // state.tripDays when Save is clicked — Cancel (or the ✕/Escape/click-
+  // outside paths, which all funnel through the same closeModal()) simply
+  // discards whatever's in the form.
+  let editingDayDate = null;
 
-  function dayCardHtml(trip, dateStr, dayNumber) {
-    const row = dayRowFor(trip.id, dateStr) || {};
-    const isOpen = state.expandedDays.has(dateStr);
-    const preview = dayCardPreview(row);
-
-    return `
-      <details class="day-card card" data-day-date="${dateStr}"${isOpen ? " open" : ""}>
-        <summary class="day-card-head">
-          <span class="day-card-date">${escapeHtml(formatDayHeading(dateStr, dayNumber))}</span>
-          ${preview ? `<span class="day-card-preview muted-line">${escapeHtml(preview)}</span>` : ""}
-        </summary>
-        <div class="day-card-body day-fields">
-          ${dayFieldsBodyHtml(row)}
-        </div>
-      </details>`;
-  }
-
-  function onDayCardToggle(e) {
-    const details = e.target;
-    if (!details.matches || !details.matches("[data-day-date]")) return;
-    const dateStr = details.dataset.dayDate;
-    if (details.open) state.expandedDays.add(dateStr);
-    else state.expandedDays.delete(dateStr);
-  }
-
-  async function onItineraryFieldChange(e) {
-    const field = e.target.dataset.dayField;
-    if (!field) return;
-    const card = e.target.closest("[data-day-date]");
-    const trip = currentTrip();
-    if (!card || !trip) return;
-
-    const row = getOrCreateDayRow(trip.id, card.dataset.dayDate);
-    if (e.target.type === "checkbox") row[field] = e.target.checked;
-    else row[field] = e.target.value.trim() || null;
-    touch(row);
-
-    await persistLocal();
-    await enqueue(row, "trip_days");
-    renderItinerary();
-    scheduleItinerarySync();
-  }
-
-  // Coalesces rapid field-to-field edits (e.g. tabbing through a day card)
-  // into a single sync instead of firing one per blur — the save itself
-  // (persistLocal/enqueue above) already happened immediately, this only
-  // delays the network round-trip and the render() at the end of syncNow().
-  function scheduleItinerarySync() {
-    clearTimeout(itinerarySyncDebounce);
-    itinerarySyncDebounce = setTimeout(syncNow, 800);
-  }
-
-  async function onItineraryDaysClick(e) {
-    const btn = e.target.closest("[data-apply-all-field]");
-    if (!btn) return;
-    const trip = currentTrip();
-    if (!trip) return;
-    const card = e.target.closest("[data-day-date]");
-    const field = btn.dataset.applyAllField;
-    const input = card.querySelector(`[data-day-field="${field}"]`);
-    if (!input) return;
-    await applyFieldToAllDays(trip, field, input.value.trim() || null);
+  function collectDayFieldsFromForm(container) {
+    const values = {};
+    container.querySelectorAll("[data-day-field]").forEach((input) => {
+      const field = input.dataset.dayField;
+      values[field] = input.type === "checkbox" ? input.checked : input.value.trim() || null;
+    });
+    return values;
   }
 
   function onItineraryTableClick(e) {
@@ -1379,11 +1287,56 @@
   function openDayEditModal(dateStr) {
     const trip = currentTrip();
     if (!trip) return;
+    editingDayDate = dateStr;
     const dayNumber = tripDateList(trip).indexOf(dateStr) + 1;
     const row = dayRowFor(trip.id, dateStr) || {};
     el.dayEditTitle.textContent = formatDayHeading(dateStr, dayNumber);
-    el.dayEditBody.innerHTML = `<div class="day-fields" data-day-date="${dateStr}">${dayFieldsBodyHtml(row)}</div>`;
+    el.dayEditBody.innerHTML = `<div class="day-fields">${dayFieldsBodyHtml(row)}</div>`;
     openModal(el.dayEditModal);
+  }
+
+  // "All day" and its span selector are the only fields that change what
+  // the rest of the form even looks like (morning/afternoon/evening vs. a
+  // single combined field) — re-render just the popup's own body from
+  // whatever's currently typed, without touching state.tripDays.
+  function onDayEditFieldChange(e) {
+    const field = e.target.dataset.dayField;
+    if (field !== "plan_all_day" && field !== "plan_all_day_span") return;
+    const container = el.dayEditBody.querySelector(".day-fields");
+    if (!container) return;
+    const pending = collectDayFieldsFromForm(container);
+    container.innerHTML = dayFieldsBodyHtml(pending);
+  }
+
+  // "Apply to all" is a distinct, immediate bulk action (own toast, own
+  // sync) rather than part of what Save/Cancel governs — matches how it
+  // already behaved before this popup existed.
+  async function onDayEditApplyAllClick(e) {
+    const btn = e.target.closest("[data-apply-all-field]");
+    if (!btn) return;
+    const trip = currentTrip();
+    if (!trip) return;
+    const field = btn.dataset.applyAllField;
+    const input = el.dayEditBody.querySelector(`[data-day-field="${field}"]`);
+    if (!input) return;
+    await applyFieldToAllDays(trip, field, input.value.trim() || null);
+  }
+
+  async function onDaySaveClick() {
+    const trip = currentTrip();
+    const container = el.dayEditBody.querySelector(".day-fields");
+    if (!trip || !editingDayDate || !container) return closeModal(el.dayEditModal);
+
+    const row = getOrCreateDayRow(trip.id, editingDayDate);
+    Object.assign(row, collectDayFieldsFromForm(container));
+    touch(row);
+
+    await persistLocal();
+    await enqueue(row, "trip_days");
+    closeModal(el.dayEditModal);
+    renderItinerary();
+    showToast("Day saved");
+    syncNow();
   }
 
   async function applyFieldToAllDays(trip, field, value) {

@@ -219,6 +219,7 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   margin-right: 6px;
   cursor: pointer;
 }
+.pack-screen .itinerary-table td.empty-hint { color: var(--muted); font-style: italic; }
 
 .pack-screen select,
 .pack-screen input[type="text"],
@@ -341,33 +342,7 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .person-count { font-size: 0.8rem; color: var(--muted); font-weight: 600; }
 
 /* ------------------------------------------------------------- itinerary */
-.pack-screen .day-card { padding: 0; overflow: hidden; }
-.pack-screen .day-card-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 14px;
-  cursor: pointer;
-  list-style: none;
-}
-.pack-screen .day-card-head::-webkit-details-marker { display: none; }
-.pack-screen .day-card-head::before {
-  content: "›";
-  font-weight: 700;
-  color: var(--muted);
-  transition: transform 120ms ease;
-  flex: none;
-}
-.pack-screen .day-card[open] .day-card-head::before { transform: rotate(90deg); }
-.pack-screen .day-card-date { font-weight: 700; font-size: 0.98rem; flex: none; }
-.pack-screen .day-card-preview { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pack-screen .day-card-body {
-  display: grid;
-  gap: 10px;
-  padding: 0 14px 14px;
-  border-top: 1px solid var(--border);
-  padding-top: 14px;
-}
+.pack-screen .day-fields { display: grid; gap: 10px; }
 .pack-screen .day-fields label { display: grid; gap: 4px; font-size: 0.78rem; font-weight: 600; color: var(--muted); }
 .pack-screen .day-field-row { display: flex; gap: 10px; }
 .pack-screen .day-field-row > label { flex: 1; min-width: 0; }
