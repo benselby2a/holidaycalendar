@@ -11,6 +11,11 @@ A lightweight holiday planning web app with:
 In Supabase SQL Editor, run the SQL in:
 - `supabase.sql`
 
+Each trip also has its own packing/itinerary screen (`pack.js`/`pack.css`,
+opened from a trip's "PlanIt" link). It reads/writes a separate
+`packing_list` schema in the same Supabase project — see
+`supabase/packing_list/` for that schema's own SQL and migrations.
+
 ## 2) Deploy to GitHub Pages
 
 1. Push this folder to a GitHub repository.
