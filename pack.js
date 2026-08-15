@@ -24,23 +24,17 @@
     householdId: "shared-household"
   };
 
-  const CATEGORIES = [
-    "Clothing", "Footwear", "Toiletries", "Health", "Tech",
-    "Documents", "Beach", "Sports", "Kids", "Food and Drink", "Other"
-  ];
-  const SEASONS = ["Any", "Spring", "Summer", "Autumn", "Winter"];
-  const TRIP_TYPES = ["Beach", "City Break", "Ski", "Hiking", "Camping", "Business", "Road Trip", "Festival"];
+  const CATEGORIES = ["Clothes", "Footwear", "Toiletries", "Health", "Tech", "Documents", "Food And Drink", "Other"];
+  const SEASONS = ["Any", "Warm Climate", "Cool Climate"];
+  const TRIP_TYPES = ["Beach Resort", "City", "Nature/Safari", "Activities", "Business", "Mountains"];
   const CATEGORY_KEYWORDS = {
-    Clothing: ["shirt", "trouser", "jean", "jumper", "dress", "sock", "underwear", "coat", "jacket", "pyjama", "thermal", "short"],
+    Clothes: ["shirt", "trouser", "jean", "jumper", "dress", "sock", "underwear", "coat", "jacket", "pyjama", "thermal", "short"],
     Footwear: ["shoe", "boot", "trainer", "sandal", "flip flop", "slipper"],
     Toiletries: ["toothbrush", "toothpaste", "shampoo", "soap", "razor", "deodorant", "shower gel", "hairbrush", "makeup"],
     Health: ["medication", "plaster", "first aid", "paracetamol", "ibuprofen", "vitamin", "repellent", "inhaler"],
     Tech: ["charger", "cable", "adaptor", "adapter", "laptop", "camera", "headphone", "power bank", "kindle"],
     Documents: ["passport", "ticket", "insurance", "licence", "license", "visa", "boarding", "booking"],
-    Beach: ["swim", "bikini", "trunks", "towel", "sunglasses", "suncream", "sunscreen", "snorkel", "sun hat"],
-    Sports: ["ski", "goggles", "helmet", "racket", "bike", "wetsuit", "board"],
-    Kids: ["nappy", "pram", "buggy", "dummy", "bottle warmer", "baby"],
-    "Food and Drink": ["snack", "water bottle", "coffee", "tea", "flask"]
+    "Food And Drink": ["snack", "water bottle", "coffee", "tea", "flask"]
   };
 
   const WHOAMI_KEY = "packing_list_whoami";
@@ -275,7 +269,7 @@
       state.tripMeta = {
         holiday_id: holidayId,
         household_id: APP_CONFIG.householdId,
-        season: seasonForDate(state.holiday.startDate) || "Any",
+        season: "Any",
         trip_types: [],
         notes: null,
         deleted_at: null,
@@ -530,7 +524,13 @@
                     <input id="pack-standard-base-input" type="number" min="0" max="99" value="1" />
                   </label>
                   <label>Per day
-                    <input id="pack-standard-perday-input" type="number" min="0" max="10" step="0.25" value="0" />
+                    <select id="pack-standard-perday-input">
+                      <option value="0">N/A</option>
+                      <option value="1">1 per day</option>
+                      <option value="0.5">1 per 2 days</option>
+                      <option value="0.3333333333333333">1 per 3 days</option>
+                      <option value="0.2">1 per 5 days</option>
+                    </select>
                   </label>
                   <label>Max qty
                     <input id="pack-standard-max-input" type="number" min="0" max="99" value="0" />
@@ -1543,7 +1543,7 @@
 
     el.itemName.value = "";
     el.itemQty.value = "1";
-    el.itemCategory.value = "Clothing";
+    el.itemCategory.value = "Clothes";
     categoryManuallySet = false;
     hideSuggestions();
     render();
@@ -1734,16 +1734,6 @@
     syncNow();
   }
 
-  function seasonForDate(dateStr) {
-    if (!dateStr) return "";
-    const month = Number(dateStr.slice(5, 7));
-    if (!month) return "";
-    if (month >= 3 && month <= 5) return "Spring";
-    if (month >= 6 && month <= 8) return "Summer";
-    if (month >= 9 && month <= 11) return "Autumn";
-    return "Winter";
-  }
-
   // ---------------------------------------------------------------------
   // Travellers
   // ---------------------------------------------------------------------
@@ -1844,7 +1834,7 @@
     if (!trip) return;
     state.wizard = { step: 1, selectedTravellers: tripTravellers(trip.id).map((t) => t.id), preview: [] };
 
-    el.wizardSeasonInput.value = trip.season && trip.season !== "Any" ? trip.season : seasonForDate(trip.start_date) || "Any";
+    el.wizardSeasonInput.value = trip.season && trip.season !== "Any" ? trip.season : "Any";
     setCheckboxGroup(el.wizardTypesInput, trip.trip_types || []);
     updateWizardDaysNote(trip);
     renderWizardStep();
@@ -2076,9 +2066,21 @@
     el.standardList.innerHTML = rows.length ? rows.map(standardRowHtml).join("") : `<li class="empty-note">No standard items match.</li>`;
   }
 
+  // Mirrors the "Per day" dropdown's own wording (openStandardEditor's
+  // options are 0/1/0.5/1÷3/0.2) so the summary line reads the same way
+  // the value was picked, instead of a raw decimal like "0.333.../day".
+  function perDayLabel(perDay) {
+    const n = Number(perDay) || 0;
+    if (n === 1) return "1/day";
+    if (n === 0.5) return "1/2 days";
+    if (Math.abs(n - 1 / 3) < 1e-9) return "1/3 days";
+    if (n === 0.2) return "1/5 days";
+    return `${n}/day`;
+  }
+
   function standardRowHtml(std) {
     const rule = [];
-    if (Number(std.per_day) > 0) rule.push(`${std.per_day}/day`);
+    if (Number(std.per_day) > 0) rule.push(perDayLabel(std.per_day));
     if (Number(std.base_qty) > 0) rule.push(`+${std.base_qty}`);
     if (Number(std.max_qty) > 0) rule.push(`max ${std.max_qty}`);
     const filters = [...(std.seasons || []), ...(std.trip_types || [])];
