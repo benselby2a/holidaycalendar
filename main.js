@@ -1865,10 +1865,12 @@ function renderNextBigHolidayHero() {
   const msPerDay = 1000 * 60 * 60 * 24;
   const daysUntil = Math.round((start - today) / msPerDay);
   const countdownText = daysUntil === 0 ? "Starts today" : `${daysUntil} day${daysUntil === 1 ? "" : "s"} to go`;
+  const packLink = `${PACKING_LIST_URL}?holiday=${nextBigHoliday.id}`;
   el.nextBigHolidayHero.innerHTML = `
     <span class="countdown-label">Next Big Holiday Countdown</span>
     <span class="countdown-destination">${nextBigHoliday.location}</span>
     <span class="countdown-value">${countdownText}</span>
+    <a class="pack-trip-link hero-planit-btn" href="${packLink}">PlanIt</a>
   `;
 }
 
