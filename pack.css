@@ -182,6 +182,7 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 
 /* ------------------------------------------------------------ trip detail */
 .pack-screen .top-tab-bar .tab-btn { font-size: 0.98rem; }
+.pack-screen .itinerary-toolbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 
 /* ---------------------------------------------------------- itinerary table */
 .pack-screen .table-scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
@@ -221,6 +222,34 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   cursor: pointer;
 }
 .pack-screen .itinerary-table td.empty-hint { color: var(--muted); font-style: italic; }
+
+.pack-screen .calendar-grid-wrap { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
+.pack-screen .cal-month { flex: 1 1 260px; max-width: 320px; }
+.pack-screen .cal-month-label { margin: 0 0 8px; font-size: 0.92rem; text-align: center; }
+.pack-screen .cal-weekday-row,
+.pack-screen .cal-day-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+.pack-screen .cal-weekday-row span {
+  font-size: 0.68rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--muted);
+  text-align: center;
+  padding-bottom: 4px;
+}
+.pack-screen .cal-day {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+.pack-screen .cal-day.is-empty { visibility: hidden; }
+.pack-screen .cal-day.in-range { background: var(--brand-soft); color: var(--brand); font-weight: 700; }
+.pack-screen .cal-day.range-start,
+.pack-screen .cal-day.range-end { background: var(--brand); color: #fff; }
+.pack-screen .cal-day.is-today { outline: 2px solid var(--brand); outline-offset: -2px; }
 
 .pack-screen select,
 .pack-screen input[type="text"],
