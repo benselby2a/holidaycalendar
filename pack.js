@@ -470,9 +470,9 @@
           </div>
 
           <div id="pack-wizard-step-3" class="wizard-step" hidden>
-            <p class="muted-line">Review the suggested items. Uncheck anything you do not need and adjust quantities.</p>
+            <p class="muted-line">Mandatory items are pre-checked - uncheck anything you don't need. Everything else is ranked by best match for this trip; check what you want and adjust quantities.</p>
             <div id="pack-wizard-preview"></div>
-            <p id="pack-wizard-preview-empty" class="empty-note" hidden>No standard items match this trip. Add some under Item Database.</p>
+            <p id="pack-wizard-preview-empty" class="empty-note" hidden>No standard items yet. Add some under Item Database.</p>
           </div>
 
           <div class="db-actions wizard-actions">
@@ -540,6 +540,11 @@
                   <legend>Trip types (none = all)</legend>
                   <div id="pack-standard-types-input"></div>
                 </fieldset>
+                <label class="switch-row">
+                  <input id="pack-standard-mandatory-input" type="checkbox" />
+                  <span>Mandatory — always suggested and pre-checked</span>
+                </label>
+                <p class="muted-line">Skips season/trip type matching entirely, for things you need on pretty much every holiday.</p>
                 <label class="switch-row">
                   <input id="pack-standard-enabled-input" type="checkbox" checked />
                   <span>Enabled</span>
@@ -681,6 +686,7 @@
     el.standardMaxInput = q("pack-standard-max-input");
     el.standardSeasonsInput = q("pack-standard-seasons-input");
     el.standardTypesInput = q("pack-standard-types-input");
+    el.standardMandatoryInput = q("pack-standard-mandatory-input");
     el.standardEnabledInput = q("pack-standard-enabled-input");
     el.standardDeleteBtn = q("pack-standard-delete-btn");
     el.standardCancelBtn = q("pack-standard-cancel-btn");
@@ -1901,30 +1907,44 @@
     renderWizardStep();
   }
 
+  // Two tiers, per direct instruction: mandatory items are pre-checked and
+  // shown regardless of season/trip type (things needed on pretty much
+  // every holiday), everything else is shown too - never hidden outright
+  // just for an imperfect season/trip-type match - but ranked by relevance
+  // and left unchecked, so the user opts in rather than opts out. This is
+  // also what fixes the earlier "item silently stops being suggested at
+  // all" failure mode: a stale or mismatched tag can only push an item
+  // down the list now, never disappear it.
   function buildWizardPreview() {
     const trip = currentTrip();
     const days = tripDays(trip) || 1;
     const season = trip.season || "Any";
     const types = trip.trip_types || [];
+
+    const candidates = state.standardItems.filter((s) => !s.deleted_at && s.enabled !== false);
+    const mandatory = candidates.filter((s) => s.mandatory).sort((a, b) => a.name.localeCompare(b.name));
+    const suggested = candidates
+      .filter((s) => !s.mandatory)
+      .map((std) => ({ std, score: wizardRelevanceScore(std, season, types) }))
+      .sort((a, b) => b.score - a.score || a.std.name.localeCompare(b.std.name))
+      .map((c) => c.std);
+
     const rows = [];
-
-    const matching = state.standardItems
-      .filter((s) => !s.deleted_at && s.enabled !== false)
-      .filter((s) => matchesSeason(s, season) && matchesTripType(s, types))
-      .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
-
-    for (const std of matching) {
+    const addRows = (std, isMandatory) => {
       const quantity = quantityForStandardItem(std, days);
       if (std.applies_to === "trip") {
         const exists = state.items.some((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id === std.id && i.scope === "shared");
-        rows.push({ key: `${std.id}:shared`, standardItemId: std.id, name: std.name, category: std.category, scope: "shared", travellerId: null, ownerLabel: "Shared", quantity, include: !exists, exists });
+        rows.push({ key: `${std.id}:shared`, standardItemId: std.id, name: std.name, category: std.category, scope: "shared", travellerId: null, ownerLabel: "Shared", quantity, mandatory: isMandatory, include: !exists && isMandatory, exists });
       } else {
         for (const travellerId of state.wizard.selectedTravellers) {
           const exists = state.items.some((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id === std.id && i.traveller_id === travellerId && i.scope === "personal");
-          rows.push({ key: `${std.id}:${travellerId}`, standardItemId: std.id, name: std.name, category: std.category, scope: "personal", travellerId, ownerLabel: travellerName(travellerId), quantity, include: !exists, exists });
+          rows.push({ key: `${std.id}:${travellerId}`, standardItemId: std.id, name: std.name, category: std.category, scope: "personal", travellerId, ownerLabel: travellerName(travellerId), quantity, mandatory: isMandatory, include: !exists && isMandatory, exists });
         }
       }
-    }
+    };
+
+    for (const std of mandatory) addRows(std, true);
+    for (const std of suggested) addRows(std, false);
     return rows;
   }
 
@@ -1937,17 +1957,16 @@
     return Math.max(1, qty);
   }
 
-  function matchesSeason(std, season) {
-    const list = (std.seasons || []).filter(Boolean);
-    if (!list.length || list.includes("Any")) return true;
-    if (!season || season === "Any") return false;
-    return list.includes(season);
-  }
-
-  function matchesTripType(std, types) {
-    const list = (std.trip_types || []).filter(Boolean);
-    if (!list.length || list.includes("Any")) return true;
-    return list.some((t) => types.includes(t));
+  // Higher = more likely wanted on this trip. A tag the item doesn't have
+  // at all (applies everywhere) scores the same as an actual match - only
+  // a tag that's present but doesn't match this trip scores lower, and
+  // even then it's a lower rank, never an exclusion.
+  function wizardRelevanceScore(std, season, types) {
+    const seasons = (std.seasons || []).filter(Boolean);
+    const seasonScore = !seasons.length || seasons.includes("Any") ? 1 : season && season !== "Any" && seasons.includes(season) ? 2 : 0;
+    const tripTypes = (std.trip_types || []).filter(Boolean);
+    const typeScore = !tripTypes.length || tripTypes.includes("Any") ? 1 : tripTypes.some((t) => types.includes(t)) ? 2 : 0;
+    return seasonScore + typeScore;
   }
 
   function renderWizardPreview() {
@@ -1964,26 +1983,40 @@
     el.wizardPreview.innerHTML = [...groups.entries()]
       .map(([label, groupRows]) => {
         const included = groupRows.filter((r) => r.include).length;
+        // Each group's rows already arrive mandatory-first (buildWizardPreview
+        // adds all mandatory rows before any suggested ones), so a single
+        // pass catches the exact point where the tier switches.
+        const itemsHtml = [];
+        let suggestedHeaderShown = false;
+        for (const row of groupRows) {
+          if (!row.mandatory && !suggestedHeaderShown) {
+            itemsHtml.push(`<li class="wizard-section-label">Suggested — check the ones you want</li>`);
+            suggestedHeaderShown = true;
+          }
+          itemsHtml.push(wizardRowHtml(row));
+        }
         return `
           <section class="card section-card">
             <header class="section-head"><h3>${escapeHtml(label)}</h3><span class="section-count">${included} new</span></header>
-            <ul class="item-list">
-              ${groupRows.map((row) => `
-                <li class="wizard-row${row.exists ? " is-existing" : ""}">
-                  <label class="switch-row">
-                    <input type="checkbox" data-preview-key="${row.key}"${row.include ? " checked" : ""}${row.exists ? " disabled" : ""} />
-                    <span>${escapeHtml(row.name)}</span>
-                  </label>
-                  <span class="wizard-row-meta">
-                    <span class="muted-line">${escapeHtml(row.category)}${row.exists ? " · already on list" : ""}</span>
-                    <input class="qty-input" type="number" inputmode="numeric" min="1" max="99" value="${row.quantity}" data-preview-qty="${row.key}"${row.exists ? " disabled" : ""} aria-label="Quantity" />
-                    <button class="icon-btn cog-btn" type="button" data-edit-standard-from-wizard="${row.standardItemId}" aria-label="Edit ${escapeHtml(row.name)}'s wizard settings">⚙</button>
-                  </span>
-                </li>`).join("")}
-            </ul>
+            <ul class="item-list">${itemsHtml.join("")}</ul>
           </section>`;
       })
       .join("");
+  }
+
+  function wizardRowHtml(row) {
+    return `
+      <li class="wizard-row${row.exists ? " is-existing" : ""}">
+        <label class="switch-row">
+          <input type="checkbox" data-preview-key="${row.key}"${row.include ? " checked" : ""}${row.exists ? " disabled" : ""} />
+          <span>${escapeHtml(row.name)}</span>
+        </label>
+        <span class="wizard-row-meta">
+          <span class="muted-line">${escapeHtml(row.category)}${row.exists ? " · already on list" : ""}</span>
+          <input class="qty-input" type="number" inputmode="numeric" min="1" max="99" value="${row.quantity}" data-preview-qty="${row.key}"${row.exists ? " disabled" : ""} aria-label="Quantity" />
+          <button class="icon-btn cog-btn" type="button" data-edit-standard-from-wizard="${row.standardItemId}" aria-label="Edit ${escapeHtml(row.name)}'s wizard settings">⚙</button>
+        </span>
+      </li>`;
   }
 
   function onWizardPreviewChange(e) {
@@ -2088,7 +2121,7 @@
     return `
       <li class="plain-row standard-row${std.enabled === false ? " is-disabled" : ""}">
         <button class="standard-main" type="button" data-edit-standard="${std.id}">
-          <span class="standard-name">${escapeHtml(std.name)}</span>
+          <span class="standard-name">${escapeHtml(std.name)}${std.mandatory ? '<span class="mandatory-badge">Mandatory</span>' : ""}</span>
           <span class="muted-line">${escapeHtml(std.category)} · ${std.applies_to === "trip" ? "shared" : "per person"}${rule.length ? ` · ${escapeHtml(rule.join(" "))}` : ""}</span>
           ${filters.length ? `<span class="chip-row">${filters.map((f) => `<span class="chip">${escapeHtml(f)}</span>`).join("")}</span>` : ""}
         </button>
@@ -2134,6 +2167,7 @@
     el.standardPerDayInput.value = std?.per_day ?? 0;
     el.standardMaxInput.value = std?.max_qty ?? 0;
     el.standardEnabledInput.checked = std ? std.enabled !== false : true;
+    el.standardMandatoryInput.checked = Boolean(std?.mandatory);
     setCheckboxGroup(el.standardSeasonsInput, std?.seasons || []);
     setCheckboxGroup(el.standardTypesInput, std?.trip_types || []);
     el.standardDeleteBtn.hidden = !std;
@@ -2168,6 +2202,7 @@
     std.seasons = readCheckboxGroup(el.standardSeasonsInput);
     std.trip_types = readCheckboxGroup(el.standardTypesInput);
     std.enabled = el.standardEnabledInput.checked;
+    std.mandatory = el.standardMandatoryInput.checked;
     touch(std);
 
     if (!existing) state.standardItems.push(std);

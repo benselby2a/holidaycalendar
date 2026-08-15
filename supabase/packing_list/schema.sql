@@ -150,6 +150,7 @@ create table if not exists packing_list.standard_items (
   max_qty integer not null default 0,
   seasons text[] not null default '{}',
   trip_types text[] not null default '{}',
+  mandatory boolean not null default false,
   enabled boolean not null default true,
   sort_order integer not null default 0,
   deleted_at timestamptz,
