@@ -467,10 +467,6 @@
           <div id="pack-wizard-step-2" class="wizard-step" hidden>
             <p class="muted-line">Who is going? Each person gets their own list.</p>
             <ul id="pack-wizard-travellers" class="plain-list"></ul>
-            <form id="pack-wizard-traveller-form" class="inline-form" autocomplete="off">
-              <input id="pack-wizard-traveller-input" type="text" placeholder="Add traveller name" required />
-              <button class="icon-btn" type="submit">Add</button>
-            </form>
           </div>
 
           <div id="pack-wizard-step-3" class="wizard-step" hidden>
@@ -662,8 +658,6 @@
     el.wizardTypesInput = q("pack-wizard-types-input");
     el.wizardDaysNote = q("pack-wizard-days-note");
     el.wizardTravellers = q("pack-wizard-travellers");
-    el.wizardTravellerForm = q("pack-wizard-traveller-form");
-    el.wizardTravellerInput = q("pack-wizard-traveller-input");
     el.wizardPreview = q("pack-wizard-preview");
     el.wizardPreviewEmpty = q("pack-wizard-preview-empty");
     el.wizardBackBtn = q("pack-wizard-back-btn");
@@ -752,9 +746,9 @@
     el.wizardNextBtn.addEventListener("click", wizardNext);
     el.wizardBackBtn.addEventListener("click", wizardBack);
     el.wizardApplyBtn.addEventListener("click", applyWizard);
-    el.wizardTravellerForm.addEventListener("submit", onWizardTravellerSubmit);
     el.wizardTravellers.addEventListener("change", renderWizardTravellers);
     el.wizardPreview.addEventListener("change", onWizardPreviewChange);
+    el.wizardPreview.addEventListener("click", onWizardPreviewClick);
 
     el.closeStandardBtn.addEventListener("click", () => closeModal(el.standardModal));
     el.addStandardBtn.addEventListener("click", () => openStandardEditor(null));
@@ -1880,16 +1874,6 @@
       : `<li class="empty-note">Add at least one traveller.</li>`;
   }
 
-  async function onWizardTravellerSubmit(e) {
-    e.preventDefault();
-    const name = normalizeName(el.wizardTravellerInput.value);
-    if (!name) return;
-    const person = await addTraveller(name);
-    if (person) state.wizard.selectedTravellers.push(person.id);
-    el.wizardTravellerInput.value = "";
-    renderWizardTravellers();
-  }
-
   function wizardBack() {
     if (!state.wizard) return;
     state.wizard.step = Math.max(1, state.wizard.step - 1);
@@ -1993,6 +1977,7 @@
                   <span class="wizard-row-meta">
                     <span class="muted-line">${escapeHtml(row.category)}${row.exists ? " · already on list" : ""}</span>
                     <input class="qty-input" type="number" min="1" max="99" value="${row.quantity}" data-preview-qty="${row.key}"${row.exists ? " disabled" : ""} aria-label="Quantity" />
+                    <button class="icon-btn cog-btn" type="button" data-edit-standard-from-wizard="${row.standardItemId}" aria-label="Edit ${escapeHtml(row.name)}'s wizard settings">⚙</button>
                   </span>
                 </li>`).join("")}
             </ul>
@@ -2013,6 +1998,21 @@
       const row = state.wizard.preview.find((r) => r.key === qty.dataset.previewQty);
       if (row) row.quantity = clampInt(qty.value, 1, 99, 1);
     }
+  }
+
+  // Opens the Item Database editor for one wizard row's underlying
+  // standard item, so a rule spotted mid-review (wrong category, missing
+  // a season/trip type, a per-day rate that's off) can be fixed on the
+  // spot for future trips. Layers the standard-items modal on top of the
+  // still-open wizard rather than closing it — this session's preview
+  // (state.wizard.preview) intentionally isn't rebuilt afterward, so any
+  // checkbox/quantity tweaks already made in this review aren't lost;
+  // the edit only takes effect the next time the wizard runs.
+  function onWizardPreviewClick(e) {
+    const btn = e.target.closest("[data-edit-standard-from-wizard]");
+    if (!btn) return;
+    openStandardModal();
+    openStandardEditor(btn.dataset.editStandardFromWizard);
   }
 
   async function applyWizard() {

@@ -545,6 +545,7 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .checkbox-grid > div { display: flex; flex-wrap: wrap; gap: 6px 14px; }
 .pack-screen .switch-row {
   display: flex !important;
+  flex-direction: row;
   align-items: center;
   gap: 6px;
   font-size: 0.85rem;
@@ -610,6 +611,7 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .wizard-row.is-existing { opacity: 0.55; }
 .pack-screen .wizard-row-meta { display: flex; align-items: center; gap: 8px; flex: none; }
 .pack-screen .qty-input { width: 62px; min-height: 36px; padding: 4px 8px; text-align: center; }
+.pack-screen .wizard-row-meta .cog-btn { width: 32px; min-height: 32px; font-size: 0.95rem; }
 
 .pack-screen .meal-edit-popup {
   position: fixed;
