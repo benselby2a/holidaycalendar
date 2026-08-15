@@ -263,6 +263,7 @@ const el = {
   holidayTodos: document.getElementById("holiday-todos"),
   countryMap: document.getElementById("country-map"),
   nextBigHolidayHero: document.getElementById("next-big-holiday-hero"),
+  headerPlanItBtn: document.getElementById("header-planit-btn"),
   openAllowance: document.getElementById("open-allowance"),
   allowanceModal: document.getElementById("allowance-modal"),
   allowanceCancel: document.getElementById("allowance-cancel"),
@@ -1857,6 +1858,7 @@ function renderNextBigHolidayHero() {
       <span class="countdown-label">Next Big Holiday Countdown</span>
       <span class="countdown-value">No upcoming big holiday found</span>
     `;
+    if (el.headerPlanItBtn) el.headerPlanItBtn.hidden = true;
     return;
   }
   const now = new Date();
@@ -1865,13 +1867,15 @@ function renderNextBigHolidayHero() {
   const msPerDay = 1000 * 60 * 60 * 24;
   const daysUntil = Math.round((start - today) / msPerDay);
   const countdownText = daysUntil === 0 ? "Starts today" : `${daysUntil} day${daysUntil === 1 ? "" : "s"} to go`;
-  const packLink = `${PACKING_LIST_URL}?holiday=${nextBigHoliday.id}`;
   el.nextBigHolidayHero.innerHTML = `
     <span class="countdown-label">Next Big Holiday Countdown</span>
     <span class="countdown-destination">${nextBigHoliday.location}</span>
     <span class="countdown-value">${countdownText}</span>
-    <a class="pack-trip-link hero-planit-btn" href="${packLink}">PlanIt</a>
   `;
+  if (el.headerPlanItBtn) {
+    el.headerPlanItBtn.href = `${PACKING_LIST_URL}?holiday=${nextBigHoliday.id}`;
+    el.headerPlanItBtn.hidden = false;
+  }
 }
 
 function renderHolidayTable() {
