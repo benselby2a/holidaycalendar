@@ -265,6 +265,31 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 }
 .pack-screen .tab-btn.is-active { background: var(--brand); border-color: var(--brand); color: #fff; }
 
+.pack-screen .packing-tab-bar { position: relative; }
+.pack-screen .cog-btn {
+  flex: none;
+  width: 44px;
+  min-height: 44px;
+  padding: 0;
+  font-size: 1.15rem;
+  text-align: center;
+}
+.pack-screen .list-options-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  gap: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px;
+  min-width: 200px;
+  z-index: 15;
+  box-shadow: 0 10px 30px rgb(0 0 0 / 0.2);
+}
+.pack-screen .list-options-menu .icon-btn { text-align: left; }
+
 .pack-screen .section-card { padding: 8px 12px 4px; }
 .pack-screen .section-head { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; }
 .pack-screen .section-head h3 { margin: 0; font-size: 0.92rem; letter-spacing: 0.01em; }
@@ -383,6 +408,23 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   margin: 0;
   box-shadow: 0 10px 30px rgb(0 0 0 / 0.18);
 }
+.pack-screen .add-fab-btn {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--brand);
+  color: #fff;
+  font-size: 1.5rem;
+  line-height: 1;
+  z-index: 511;
+  cursor: pointer;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.22);
+}
+.pack-screen .add-fab-btn:active { transform: translateY(1px) scale(0.98); }
 .pack-screen .add-layout { display: grid; gap: 6px; position: relative; }
 .pack-screen .add-quick-row { display: flex; gap: 8px; }
 .pack-screen .add-quick-row .add-item-input { flex: 1; }
@@ -467,6 +509,7 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   transition: opacity 160ms ease;
   z-index: 8;
 }
+.pack-screen.add-panel-open::before,
 .pack-screen.options-menu-open::before { opacity: 1; }
 
 /* ----------------------------------------------------------------- modals */
