@@ -1074,10 +1074,12 @@
     notes: "Notes"
   };
 
-  // Column order: Accommodation, then the Morning/Afternoon/Evening plan
-  // columns, then the meals, then Transport, then Notes last.
-  const MEAL_FIELDS = ["breakfast", "lunch", "dinner"];
+  // Column order: Day, Travel, Activities (Morning/Afternoon/Evening —
+  // grouped under a shared header, contiguous so an all-day entry can
+  // still use a single spanning <td>), Meals (Breakfast/Lunch/Dinner —
+  // grouped under a shared header), Accommodation, Notes.
   const PLAN_SLOTS = ["morning", "afternoon", "evening"];
+  const MEAL_FIELDS = ["breakfast", "lunch", "dinner"];
 
   function itineraryTableHtml(trip, dates) {
     const cell = (v) => escapeHtml(v || "—");
@@ -1087,10 +1089,10 @@
     // Skip a column entirely (header + cells) when no day in the trip has
     // anything in it — most trips only ever fill in a handful of these.
     const hasData = (field) => dates.some((d) => hasText(rowFor(d)[field]));
-    const accommodationVisible = hasData("accommodation");
-    const visibleMeals = MEAL_FIELDS.filter(hasData);
     const transportVisible = hasData("transport");
+    const accommodationVisible = hasData("accommodation");
     const notesVisible = hasData("notes");
+    const visibleMeals = MEAL_FIELDS.filter(hasData);
 
     // Each plan slot is checked independently, same as every other
     // column — a slot counts as "populated" either from its own field on
@@ -1116,7 +1118,7 @@
       }
     }
     const visibleSlots = PLAN_SLOTS.filter((s) => slotVisible[s]);
-    const hasAnyColumn = accommodationVisible || visibleMeals.length > 0 || transportVisible || notesVisible || visibleSlots.length > 0;
+    const hasAnyColumn = transportVisible || accommodationVisible || notesVisible || visibleMeals.length > 0 || visibleSlots.length > 0;
 
     if (!hasAnyColumn) {
       const rows = dates
@@ -1141,9 +1143,9 @@
     }
 
     const mergedFields = [
-      ...(accommodationVisible ? ["accommodation"] : []),
-      ...visibleMeals,
       ...(transportVisible ? ["transport"] : []),
+      ...visibleMeals,
+      ...(accommodationVisible ? ["accommodation"] : []),
       ...(notesVisible ? ["notes"] : [])
     ];
     const merges = {};
@@ -1157,56 +1159,73 @@
       return `<td${spanAttr}>${cell(row[field])}</td>`;
     };
 
-    const planValue = { morning: (row) => row.plan_morning, afternoon: (row) => row.plan_afternoon, evening: (row) => row.plan_evening };
+    // Morning/Afternoon/Evening are contiguous again (the Meals group sits
+    // after them, not in between), so an all-day entry goes back to a
+    // single spanning <td> across whichever of its covered slots are
+    // actually visible columns.
+    const activityCellsHtml = (row) => {
+      if (!visibleSlots.length) return "";
+      const allDay = Boolean(row.plan_all_day);
+      const span = row.plan_all_day_span === "full_day" ? "full_day" : "morning_afternoon";
+      if (!allDay) {
+        const value = { morning: row.plan_morning, afternoon: row.plan_afternoon, evening: row.plan_evening };
+        return visibleSlots.map((slot) => `<td>${cell(value[slot])}</td>`).join("");
+      }
+      const coveredSlots = (span === "full_day" ? PLAN_SLOTS : ["morning", "afternoon"]).filter((s) => visibleSlots.includes(s));
+      let html = "";
+      if (coveredSlots.length) {
+        const spanAttr = coveredSlots.length > 1 ? ` colspan="${coveredSlots.length}"` : "";
+        html += `<td${spanAttr} class="all-day-cell">${cell(row.plan_all_day_text)}</td>`;
+      }
+      if (span !== "full_day" && visibleSlots.includes("evening")) {
+        html += `<td>${cell(row.plan_evening)}</td>`;
+      }
+      return html;
+    };
 
     const rows = dates
       .map((dateStr, i) => {
         const row = rowFor(dateStr);
-        let planCells = "";
-        if (visibleSlots.length) {
-          const allDay = Boolean(row.plan_all_day);
-          const span = row.plan_all_day_span === "full_day" ? "full_day" : "morning_afternoon";
-          if (allDay) {
-            const coveredSlots = span === "full_day" ? PLAN_SLOTS : ["morning", "afternoon"];
-            const visibleCovered = coveredSlots.filter((s) => visibleSlots.includes(s));
-            if (visibleCovered.length) {
-              const spanAttr = visibleCovered.length > 1 ? ` colspan="${visibleCovered.length}"` : "";
-              planCells += `<td${spanAttr} class="all-day-cell">${cell(row.plan_all_day_text)}</td>`;
-            }
-            if (span !== "full_day" && visibleSlots.includes("evening")) {
-              planCells += `<td>${cell(row.plan_evening)}</td>`;
-            }
-          } else {
-            planCells = visibleSlots.map((slot) => `<td>${cell(planValue[slot](row))}</td>`).join("");
-          }
-        }
         return `
           <tr>
             <td class="day-table-date">
               <button type="button" class="edit-day-btn" data-edit-day="${dateStr}" aria-label="Edit ${escapeHtml(formatDayHeading(dateStr, i + 1))}">✎</button>
               ${escapeHtml(formatDayHeading(dateStr, i + 1))}
             </td>
-            ${accommodationVisible ? mergeCell("accommodation", row, i) : ""}
-            ${planCells}
-            ${visibleMeals.map((field) => mergeCell(field, row, i)).join("")}
             ${transportVisible ? mergeCell("transport", row, i) : ""}
+            ${activityCellsHtml(row)}
+            ${visibleMeals.map((field) => mergeCell(field, row, i)).join("")}
+            ${accommodationVisible ? mergeCell("accommodation", row, i) : ""}
             ${notesVisible ? mergeCell("notes", row, i) : ""}
           </tr>`;
       })
       .join("");
 
-    const accommodationHeadCell = accommodationVisible ? `<th>${DAY_FIELD_LABELS.accommodation}</th>` : "";
-    const planHeadCells = visibleSlots.map((slot) => `<th>${slot.charAt(0).toUpperCase()}${slot.slice(1)}</th>`).join("");
-    const mealsHeadCells = visibleMeals.map((field) => `<th>${DAY_FIELD_LABELS[field]}</th>`).join("");
-    const transportHeadCell = transportVisible ? `<th>${DAY_FIELD_LABELS.transport}</th>` : "";
-    const notesHeadCell = notesVisible ? `<th>${DAY_FIELD_LABELS.notes}</th>` : "";
+    // Activities/Meals get a shared group header (colspan) over a second
+    // header row listing just their own visible columns; everything else
+    // (Day/Travel/Accommodation/Notes) spans both header rows instead —
+    // unless neither group has anything visible, in which case skip the
+    // second row entirely rather than render one that's empty.
+    const hasGroupedColumns = visibleSlots.length > 0 || visibleMeals.length > 0;
+    const slotLabel = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+    const soloHead = (visible, label) => (visible ? `<th${hasGroupedColumns ? ' rowspan="2"' : ""}>${label}</th>` : "");
+
+    const headRow1 =
+      `<th${hasGroupedColumns ? ' rowspan="2"' : ""}>Day</th>` +
+      soloHead(transportVisible, DAY_FIELD_LABELS.transport) +
+      (visibleSlots.length ? `<th colspan="${visibleSlots.length}">Activities</th>` : "") +
+      (visibleMeals.length ? `<th colspan="${visibleMeals.length}">Meals</th>` : "") +
+      soloHead(accommodationVisible, DAY_FIELD_LABELS.accommodation) +
+      soloHead(notesVisible, DAY_FIELD_LABELS.notes);
+
+    const headRow2 = hasGroupedColumns
+      ? `<tr>${visibleSlots.map((s) => `<th>${slotLabel(s)}</th>`).join("")}${visibleMeals.map((f) => `<th>${DAY_FIELD_LABELS[f]}</th>`).join("")}</tr>`
+      : "";
 
     return `
       <div class="table-scroll">
         <table class="itinerary-table">
-          <thead><tr>
-            <th>Day</th>${accommodationHeadCell}${planHeadCells}${mealsHeadCells}${transportHeadCell}${notesHeadCell}
-          </tr></thead>
+          <thead><tr>${headRow1}</tr>${headRow2}</thead>
           <tbody>${rows}</tbody>
         </table>
       </div>`;
