@@ -645,6 +645,9 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 }
 .pack-screen .wizard-row-meta { display: flex; align-items: center; gap: 8px; flex: none; }
 .pack-screen .qty-input { width: 62px; min-height: 36px; padding: 4px 8px; text-align: center; }
+.pack-screen .wizard-more-toggle { border-top: 1px solid var(--border); padding: 6px 0; }
+.pack-screen .wizard-more-toggle .add-more { font-size: 0.82rem; }
+.pack-screen .wizard-more-toggle .item-list { margin-top: 4px; }
 .pack-screen .wizard-row-meta .cog-btn { width: 32px; min-height: 32px; font-size: 0.95rem; }
 
 .pack-screen .meal-edit-popup {
