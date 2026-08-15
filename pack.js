@@ -1832,13 +1832,27 @@
     closeOptionsMenu();
     const trip = currentTrip();
     if (!trip) return;
-    state.wizard = { step: 1, selectedTravellers: tripTravellers(trip.id).map((t) => t.id), preview: [] };
+    state.wizard = { step: 1, selectedTravellers: defaultWizardTravellers(trip), preview: [] };
 
     el.wizardSeasonInput.value = trip.season && trip.season !== "Any" ? trip.season : "Any";
     setCheckboxGroup(el.wizardTypesInput, trip.trip_types || []);
     updateWizardDaysNote(trip);
     renderWizardStep();
     openModal(el.wizardModal);
+  }
+
+  // Defaults to just the signed-in traveller, so the common case - one
+  // person running the wizard for their own list - needs zero clicks on
+  // the traveller step. Someone building a list on another traveller's
+  // behalf (e.g. a parent packing for a child) just checks that person
+  // instead - each run is independent, so running it again later for
+  // someone else, or for yourself, doesn't touch what an earlier run
+  // already added. Falls back to everyone if there's no recognised
+  // signed-in traveller to default to.
+  function defaultWizardTravellers(trip) {
+    const people = tripTravellers(trip.id);
+    if (state.whoami && people.some((p) => p.id === state.whoami)) return [state.whoami];
+    return people.map((p) => p.id);
   }
 
   function updateWizardDaysNote(trip) {
@@ -1874,7 +1888,7 @@
         <li class="plain-row">
           <label class="switch-row">
             <input type="checkbox" data-traveller-id="${t.id}"${selected.has(t.id) ? " checked" : ""} />
-            <span>${escapeHtml(t.name)}</span>
+            <span>${escapeHtml(t.name)}${t.id === state.whoami ? " (you)" : ""}</span>
           </label>
         </li>`).join("")
       : `<li class="empty-note">Add at least one traveller.</li>`;
