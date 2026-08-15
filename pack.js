@@ -96,6 +96,14 @@
   // every el.* entry at the new markup, but doesn't stop an old promise
   // chain from resuming and using those same shared references.
   let openToken = 0;
+  // Tracks the notes text last shown in the textarea, so renderTripNotes()
+  // can tell "still matches what we last displayed" apart from "hasn't
+  // been populated yet this open()" — null means the latter. Without this,
+  // the very first render after opening a trip with saved notes compares
+  // the still-empty textarea against state.tripMeta.notes, sees a mismatch,
+  // and (wrongly, since isFocused is false) treats that as an unsaved user
+  // edit — so the guard never fills the textarea and the notes look lost.
+  let lastSyncedTripNotes = null;
 
   // ---------------------------------------------------------------------
   // Mount / lifecycle
@@ -113,6 +121,7 @@
   async function open(holidayId) {
     if (!holidayId) return;
     const myToken = ++openToken;
+    lastSyncedTripNotes = null;
 
     ensureRoot();
     root.classList.remove("hidden");
@@ -1262,11 +1271,21 @@
   // ---------------------------------------------------------------------
 
   function renderTripNotes() {
-    const saved = state.tripMeta?.notes || "";
-    const isDirty = el.tripNotesInput.value.trim() !== saved.trim();
+    if (!state.tripMeta) return;
+    const saved = state.tripMeta.notes || "";
+    // Nothing's been displayed yet this open() — always populate, since
+    // there's no possibility of clobbering a user edit before one exists.
+    if (lastSyncedTripNotes === null) {
+      el.tripNotesInput.value = saved;
+      lastSyncedTripNotes = saved;
+      updateTripNotesSaveState();
+      return;
+    }
+    const isDirty = el.tripNotesInput.value.trim() !== lastSyncedTripNotes.trim();
     const isFocused = document.activeElement === el.tripNotesInput;
     if (!isDirty && !isFocused) {
       el.tripNotesInput.value = saved;
+      lastSyncedTripNotes = saved;
     }
     updateTripNotesSaveState();
   }
@@ -1278,7 +1297,9 @@
 
   async function onTripNotesSaveClick() {
     if (!state.tripMeta) return;
-    state.tripMeta.notes = el.tripNotesInput.value.trim() || null;
+    const value = el.tripNotesInput.value.trim();
+    state.tripMeta.notes = value || null;
+    lastSyncedTripNotes = value;
     touch(state.tripMeta);
     await persistLocal();
     await enqueue(state.tripMeta, "trip_meta");
