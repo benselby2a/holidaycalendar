@@ -224,11 +224,7 @@ h1, h2, h3, h4, p { margin: 0; }
   color: var(--accent);
 }
 
-#header-planit-btn {
-  font-size: 0.7rem;
-  padding: 0.15rem 0.4rem;
-  min-height: auto;
-}
+.hero-planit-btn { margin-top: 6px; }
 
 /* ── Utility actions ───────────────── */
 
