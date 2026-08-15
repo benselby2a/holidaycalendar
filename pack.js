@@ -314,6 +314,9 @@
         </div>
 
         <div id="pack-top-pane-itinerary" class="pane">
+          <div class="itinerary-toolbar">
+            <button id="pack-calendar-view-btn" class="icon-btn" type="button">Calendar View</button>
+          </div>
           <div id="pack-itinerary-table-wrap"></div>
           <p id="pack-itinerary-empty" class="empty-note" hidden>Set trip dates in Holiday Calendar to plan each day.</p>
         </div>
@@ -420,6 +423,24 @@
             <button id="pack-day-save-btn" class="icon-btn primary-btn" type="button">Save</button>
             <button id="pack-day-cancel-btn" class="icon-btn" type="button">Cancel</button>
           </div>
+        </div>
+      </div>
+
+      <div id="pack-calendar-modal" class="modal">
+        <div class="modal-content wide">
+          <div class="modal-header">
+            <h2>Calendar View</h2>
+            <button id="pack-close-calendar-btn" class="icon-btn" type="button">✕</button>
+          </div>
+          <div class="form-row">
+            <label>Start date
+              <input id="pack-calendar-start-input" type="date" />
+            </label>
+            <label>End date
+              <input id="pack-calendar-end-input" type="date" />
+            </label>
+          </div>
+          <div id="pack-calendar-grid" class="calendar-grid-wrap"></div>
         </div>
       </div>
 
@@ -586,6 +607,13 @@
 
     el.itineraryTableWrap = q("pack-itinerary-table-wrap");
     el.itineraryEmpty = q("pack-itinerary-empty");
+    el.calendarViewBtn = q("pack-calendar-view-btn");
+
+    el.calendarModal = q("pack-calendar-modal");
+    el.closeCalendarBtn = q("pack-close-calendar-btn");
+    el.calendarStartInput = q("pack-calendar-start-input");
+    el.calendarEndInput = q("pack-calendar-end-input");
+    el.calendarGrid = q("pack-calendar-grid");
 
     el.addCard = q("pack-add-card");
     el.addForm = q("pack-add-form");
@@ -683,6 +711,10 @@
     el.everyoneSummary.addEventListener("change", onItemListChange);
     el.sharedOwnerFilter.addEventListener("click", onSharedFilterClick);
     el.itineraryTableWrap.addEventListener("click", onItineraryTableClick);
+    el.calendarViewBtn.addEventListener("click", openCalendarViewModal);
+    el.closeCalendarBtn.addEventListener("click", () => closeModal(el.calendarModal));
+    el.calendarStartInput.addEventListener("change", renderCalendarGrid);
+    el.calendarEndInput.addEventListener("change", renderCalendarGrid);
 
     el.addForm.addEventListener("submit", onAddItemSubmit);
     el.itemName.addEventListener("input", renderNameSuggestions);
@@ -1236,9 +1268,79 @@
     return `Day ${dayNumber} · ${label}`;
   }
 
-  // Shared between the collapsible cards view and the table view's
-  // per-row edit popup, so there's exactly one place that knows what a
-  // day's editable fields look like.
+  // ---------------------------------------------------------------------
+  // Calendar view — a visual month-grid preview of the trip's dates,
+  // separate from the itinerary table above. Start/end default to the
+  // trip's own dates but can be freely overridden here without touching
+  // state.tripDays or holidaycalendar.holidays — this is purely a
+  // display, nothing here saves anything.
+  // ---------------------------------------------------------------------
+
+  function openCalendarViewModal() {
+    const trip = currentTrip();
+    if (!trip) return;
+    el.calendarStartInput.value = trip.start_date || "";
+    el.calendarEndInput.value = trip.end_date || "";
+    renderCalendarGrid();
+    openModal(el.calendarModal);
+  }
+
+  function renderCalendarGrid() {
+    const startStr = el.calendarStartInput.value;
+    const endStr = el.calendarEndInput.value;
+    if (!startStr || !endStr) {
+      el.calendarGrid.innerHTML = `<p class="empty-note">Set a start and end date to preview the calendar.</p>`;
+      return;
+    }
+    if (endStr < startStr) {
+      el.calendarGrid.innerHTML = `<p class="empty-note">End date is before start date.</p>`;
+      return;
+    }
+
+    const start = new Date(`${startStr}T00:00:00`);
+    const end = new Date(`${endStr}T00:00:00`);
+    const months = [];
+    let cursor = new Date(start.getFullYear(), start.getMonth(), 1);
+    const last = new Date(end.getFullYear(), end.getMonth(), 1);
+    while (cursor <= last) {
+      months.push({ year: cursor.getFullYear(), month: cursor.getMonth() });
+      cursor = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 1);
+    }
+
+    el.calendarGrid.innerHTML = months.map((m) => monthGridHtml(m.year, m.month, startStr, endStr)).join("");
+  }
+
+  function monthGridHtml(year, month, startStr, endStr) {
+    const firstOfMonth = new Date(year, month, 1);
+    const startWeekday = (firstOfMonth.getDay() + 6) % 7; // Monday-first grid
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const monthLabel = firstOfMonth.toLocaleDateString("en-GB", { month: "long", year: "numeric" });
+    const todayStr = new Date().toISOString().slice(0, 10);
+
+    const cells = [];
+    for (let i = 0; i < startWeekday; i++) cells.push(`<span class="cal-day is-empty"></span>`);
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      const inRange = dateStr >= startStr && dateStr <= endStr;
+      const classes = ["cal-day"];
+      if (inRange) classes.push("in-range");
+      if (dateStr === startStr) classes.push("range-start");
+      if (dateStr === endStr) classes.push("range-end");
+      if (dateStr === todayStr) classes.push("is-today");
+      cells.push(`<span class="${classes.join(" ")}">${d}</span>`);
+    }
+
+    return `
+      <div class="cal-month card">
+        <h3 class="cal-month-label">${escapeHtml(monthLabel)}</h3>
+        <div class="cal-weekday-row">
+          <span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span>
+        </div>
+        <div class="cal-day-grid">${cells.join("")}</div>
+      </div>`;
+  }
+
+  // The table view's per-row edit popup builds its form from this.
   function dayFieldsBodyHtml(row) {
     const allDay = Boolean(row.plan_all_day);
     const span = row.plan_all_day_span === "full_day" ? "full_day" : "morning_afternoon";
