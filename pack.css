@@ -381,6 +381,8 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .delete-btn {
   width: 32px;
   height: 36px;
+  min-height: 0;
+  padding: 0;
   border: 1px solid var(--border);
   background: var(--surface);
   color: var(--danger);
@@ -609,6 +611,17 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .plain-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--border); padding: 8px 2px; }
 .pack-screen .plain-row:last-child { border-bottom: none; }
 .pack-screen .row-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+/* In the Item Database list, the delete button sits right next to the
+   Enabled checkbox (22x22) - match its size so the two don't look
+   mismatched, instead of the taller, wider default delete-btn used
+   elsewhere (item rows, travellers) where there's no checkbox beside it. */
+.pack-screen .standard-row .row-actions .delete-btn {
+  width: 22px;
+  height: 22px;
+  min-width: 0;
+  border-radius: 6px;
+  font-size: 0.75rem;
+}
 .pack-screen .inline-form { display: flex; gap: 8px; margin-top: 12px; }
 .pack-screen .inline-form input { flex: 1; }
 
@@ -649,6 +662,16 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .wizard-more-toggle .add-more { font-size: 0.82rem; }
 .pack-screen .wizard-more-toggle .item-list { margin-top: 4px; }
 .pack-screen .wizard-row-meta .cog-btn { width: 32px; min-height: 32px; font-size: 0.95rem; }
+.pack-screen .match-score {
+  flex: none;
+  font-size: 0.68rem;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: var(--brand-soft);
+  color: var(--brand);
+  white-space: nowrap;
+}
 
 .pack-screen .meal-edit-popup {
   position: fixed;

@@ -305,7 +305,7 @@
         <button id="pack-undo-btn" class="icon-btn" type="button" disabled>Undo</button>
         <button id="pack-settings-btn" class="icon-btn" type="button">Trip Settings</button>
         <button id="pack-travellers-btn" class="icon-btn" type="button">Travellers</button>
-        <button id="pack-wizard-btn" class="icon-btn" type="button">Packing Wizard</button>
+        <button id="pack-wizard-btn" class="icon-btn" type="button">🐳🪄 Packing Wizard</button>
         <button id="pack-standard-btn" class="icon-btn" type="button">Standard Items</button>
         <button id="pack-unpack-btn" class="icon-btn" type="button">Unpack Everything</button>
       </div>
@@ -341,7 +341,7 @@
             <button id="pack-list-options-btn" class="icon-btn cog-btn" type="button" aria-label="List options" aria-haspopup="true" aria-expanded="false">⚙</button>
             <div id="pack-list-options-menu" class="list-options-menu" hidden>
               <button id="pack-remove-all-btn" class="icon-btn danger-btn" type="button">Remove All Items</button>
-              <button id="pack-run-wizard-btn" class="icon-btn" type="button">Packing Wizard</button>
+              <button id="pack-run-wizard-btn" class="icon-btn" type="button">🐳🪄 Packing Wizard</button>
               <button id="pack-item-database-btn" class="icon-btn" type="button">Item Database</button>
             </div>
           </div>
@@ -448,7 +448,7 @@
       <div id="pack-wizard-modal" class="modal">
         <div class="modal-content wide">
           <div class="modal-header">
-            <h2 id="pack-wizard-title">Packing Wizard</h2>
+            <h2 id="pack-wizard-title">🐳🪄 Packing Wizard</h2>
             <button id="pack-close-wizard-btn" class="icon-btn" type="button">✕</button>
           </div>
 
@@ -1545,9 +1545,8 @@
     el.itemQty.value = "1";
     el.itemCategory.value = "Clothes";
     categoryManuallySet = false;
-    hideSuggestions();
     render();
-    el.itemName.focus();
+    setAddPanelOpen(false);
     showToast(`Added ${name}`);
     syncNow();
   }
@@ -1943,21 +1942,21 @@
       .sort((a, b) => b.score - a.score || a.std.name.localeCompare(b.std.name));
 
     const rows = [];
-    const addRows = (std, isMandatory, tailored) => {
+    const addRows = (std, isMandatory, tailored, matchPercent) => {
       const quantity = quantityForStandardItem(std, days);
       if (std.applies_to === "trip") {
         const exists = state.items.some((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id === std.id && i.scope === "shared");
-        rows.push({ key: `${std.id}:shared`, standardItemId: std.id, name: std.name, category: std.category, scope: "shared", travellerId: null, ownerLabel: "Shared", quantity, mandatory: isMandatory, tailored, include: !exists && isMandatory, exists });
+        rows.push({ key: `${std.id}:shared`, standardItemId: std.id, name: std.name, category: std.category, scope: "shared", travellerId: null, ownerLabel: "Shared", quantity, mandatory: isMandatory, tailored, matchPercent, include: !exists && isMandatory, exists });
       } else {
         for (const travellerId of state.wizard.selectedTravellers) {
           const exists = state.items.some((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id === std.id && i.traveller_id === travellerId && i.scope === "personal");
-          rows.push({ key: `${std.id}:${travellerId}`, standardItemId: std.id, name: std.name, category: std.category, scope: "personal", travellerId, ownerLabel: travellerName(travellerId), quantity, mandatory: isMandatory, tailored, include: !exists && isMandatory, exists });
+          rows.push({ key: `${std.id}:${travellerId}`, standardItemId: std.id, name: std.name, category: std.category, scope: "personal", travellerId, ownerLabel: travellerName(travellerId), quantity, mandatory: isMandatory, tailored, matchPercent, include: !exists && isMandatory, exists });
         }
       }
     };
 
-    for (const std of mandatory) addRows(std, true, true);
-    for (const { std, tailored } of suggested) addRows(std, false, tailored);
+    for (const std of mandatory) addRows(std, true, true, null);
+    for (const { std, score, tailored } of suggested) addRows(std, false, tailored, Math.round((score / WIZARD_MAX_SCORE) * 100));
     return rows;
   }
 
@@ -1969,6 +1968,11 @@
     if (max > 0) qty = Math.min(qty, max);
     return Math.max(1, qty);
   }
+
+  // Max possible from wizardRelevanceScore (season + trip-type, 2 points
+  // each) - used to turn the raw score into the % shown next to suggested
+  // items.
+  const WIZARD_MAX_SCORE = 4;
 
   // Higher = more likely wanted on this trip. A tag the item doesn't have
   // at all (applies everywhere) scores the same as an actual match - only
@@ -2037,6 +2041,11 @@
   }
 
   function wizardRowHtml(row) {
+    // Mandatory rows carry no score (matchPercent is null) - they're
+    // included unconditionally, so a match % wouldn't mean anything there.
+    const scoreBadge = row.matchPercent == null
+      ? ""
+      : `<span class="match-score" title="How well this matches the trip's season and trip type">${row.matchPercent}%</span>`;
     return `
       <li class="wizard-row${row.exists ? " is-existing" : ""}">
         <label class="switch-row">
@@ -2044,6 +2053,7 @@
           <span>${escapeHtml(row.name)}</span>
         </label>
         <span class="wizard-row-meta">
+          ${scoreBadge}
           <span class="muted-line">${escapeHtml(row.category)}${row.exists ? " · already on list" : ""}</span>
           <input class="qty-input" type="number" inputmode="numeric" min="1" max="99" value="${row.quantity}" data-preview-qty="${row.key}"${row.exists ? " disabled" : ""} aria-label="Quantity" />
           <button class="icon-btn cog-btn" type="button" data-edit-standard-from-wizard="${row.standardItemId}" aria-label="Edit ${escapeHtml(row.name)}'s wizard settings">⚙</button>
@@ -2122,6 +2132,14 @@
   }
 
   function renderStandardList() {
+    // Toggling/saving/deleting a row re-renders the whole list (simplest
+    // way to keep sort order and filtering correct), which replaces every
+    // <li> including the one just interacted with - losing the modal's
+    // scroll position as a side effect. Save/restore it explicitly so
+    // acting on a row halfway down a long list doesn't jump you back to
+    // the top.
+    const scrollTop = el.standardModal.scrollTop;
+
     const query = state.standardFilter;
     const rows = state.standardItems
       .filter((s) => !s.deleted_at)
@@ -2129,18 +2147,30 @@
       .sort((a, b) => (a.category || "").localeCompare(b.category || "") || (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
 
     el.standardList.innerHTML = rows.length ? rows.map(standardRowHtml).join("") : `<li class="empty-note">No standard items match.</li>`;
+    el.standardModal.scrollTop = scrollTop;
+    // The re-render just destroyed whatever had focus (the checkbox/button
+    // the user clicked), and the browser's own focus-loss handling can
+    // nudge scroll position again right after this runs - reapply once
+    // more next frame so that doesn't quietly undo the restore above.
+    requestAnimationFrame(() => { el.standardModal.scrollTop = scrollTop; });
   }
 
   // Mirrors the "Per day" dropdown's own wording (openStandardEditor's
   // options are 0/1/0.5/1÷3/0.2) so the summary line reads the same way
   // the value was picked, instead of a raw decimal like "0.333.../day".
+  // Rounds to the closest of the dropdown's own rates rather than requiring
+  // an exact match, so an odd legacy value (e.g. 0.34, from before the
+  // free-number input was replaced with this fixed set) still reads as a
+  // sensible label instead of falling through to a raw decimal.
+  const PER_DAY_LABELS = [
+    { value: 1, label: "1/day" },
+    { value: 0.5, label: "1/2 days" },
+    { value: 1 / 3, label: "1/3 days" },
+    { value: 0.2, label: "1/5 days" }
+  ];
   function perDayLabel(perDay) {
     const n = Number(perDay) || 0;
-    if (n === 1) return "1/day";
-    if (n === 0.5) return "1/2 days";
-    if (Math.abs(n - 1 / 3) < 1e-9) return "1/3 days";
-    if (n === 0.2) return "1/5 days";
-    return `${n}/day`;
+    return PER_DAY_LABELS.reduce((best, opt) => (Math.abs(opt.value - n) < Math.abs(best.value - n) ? opt : best)).label;
   }
 
   function standardRowHtml(std) {
