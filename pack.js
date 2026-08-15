@@ -96,6 +96,9 @@
   // every el.* entry at the new markup, but doesn't stop an old promise
   // chain from resuming and using those same shared references.
   let openToken = 0;
+  // Whether the floating add-item panel is expanded (vs. collapsed to the
+  // + FAB). Lives outside `state` since it's pure UI chrome, not data.
+  let addPanelOpen = false;
   // Tracks the notes text last shown in the textarea, so renderTripNotes()
   // can tell "still matches what we last displayed" apart from "hasn't
   // been populated yet this open()" — null means the latter. Without this,
@@ -122,6 +125,7 @@
     if (!holidayId) return;
     const myToken = ++openToken;
     lastSyncedTripNotes = null;
+    addPanelOpen = false;
 
     ensureRoot();
     root.classList.remove("hidden");
@@ -336,10 +340,16 @@
         </div>
 
         <div id="pack-top-pane-packing" class="pane" hidden>
-          <div class="tab-bar">
+          <div class="tab-bar packing-tab-bar">
             <button id="pack-tab-mine-btn" class="tab-btn is-active" type="button" data-tab="mine">My List</button>
             <button id="pack-tab-shared-btn" class="tab-btn" type="button" data-tab="shared">Shared</button>
             <button id="pack-tab-everyone-btn" class="tab-btn" type="button" data-tab="everyone">Everyone</button>
+            <button id="pack-list-options-btn" class="icon-btn cog-btn" type="button" aria-label="List options" aria-haspopup="true" aria-expanded="false">⚙</button>
+            <div id="pack-list-options-menu" class="list-options-menu" hidden>
+              <button id="pack-remove-all-btn" class="icon-btn danger-btn" type="button">Remove All Items</button>
+              <button id="pack-run-wizard-btn" class="icon-btn" type="button">Packing Wizard</button>
+              <button id="pack-item-database-btn" class="icon-btn" type="button">Item Database</button>
+            </div>
           </div>
 
           <div id="pack-pane-mine" class="pane">
@@ -385,6 +395,7 @@
           </div>
         </form>
       </section>
+      <button id="pack-add-fab-btn" class="add-fab-btn" type="button" aria-label="Add new item" hidden>＋</button>
 
       <div id="pack-trip-settings-modal" class="modal">
         <div class="modal-content">
@@ -471,7 +482,7 @@
           <div id="pack-wizard-step-3" class="wizard-step" hidden>
             <p class="muted-line">Review the suggested items. Uncheck anything you do not need and adjust quantities.</p>
             <div id="pack-wizard-preview"></div>
-            <p id="pack-wizard-preview-empty" class="empty-note" hidden>No standard items match this trip. Add some under Standard Items.</p>
+            <p id="pack-wizard-preview-empty" class="empty-note" hidden>No standard items match this trip. Add some under Item Database.</p>
           </div>
 
           <div class="db-actions wizard-actions">
@@ -485,7 +496,7 @@
       <div id="pack-standard-modal" class="modal">
         <div class="modal-content wide">
           <div class="modal-header">
-            <h2>Standard Items</h2>
+            <h2>Item Database</h2>
             <button id="pack-close-standard-btn" class="icon-btn" type="button">✕</button>
           </div>
           <p class="muted-line">These defaults drive the packing wizard. <em>Per day</em> scales with trip length.</p>
@@ -594,6 +605,11 @@
     el.paneMine = q("pack-pane-mine");
     el.paneShared = q("pack-pane-shared");
     el.paneEveryone = q("pack-pane-everyone");
+    el.listOptionsBtn = q("pack-list-options-btn");
+    el.listOptionsMenu = q("pack-list-options-menu");
+    el.removeAllBtn = q("pack-remove-all-btn");
+    el.runWizardBtn = q("pack-run-wizard-btn");
+    el.itemDatabaseBtn = q("pack-item-database-btn");
     el.mineSections = q("pack-mine-sections");
     el.mineEmpty = q("pack-mine-empty");
     el.sharedSections = q("pack-shared-sections");
@@ -608,6 +624,7 @@
     el.tripNotesSaveBtn = q("pack-trip-notes-save-btn");
 
     el.addCard = q("pack-add-card");
+    el.addFabBtn = q("pack-add-fab-btn");
     el.addForm = q("pack-add-form");
     el.itemName = q("pack-item-entry");
     el.itemOptions = q("pack-item-options");
@@ -694,6 +711,10 @@
 
     el.topTabBtns.forEach((btn) => btn.addEventListener("click", onTopTabClick));
     el.tabBtns.forEach((btn) => btn.addEventListener("click", () => setTab(btn.dataset.tab)));
+    el.listOptionsBtn.addEventListener("click", toggleListOptionsMenu);
+    el.removeAllBtn.addEventListener("click", () => { closeListOptionsMenu(); removeAllItems(); });
+    el.runWizardBtn.addEventListener("click", () => { closeListOptionsMenu(); openWizard(); });
+    el.itemDatabaseBtn.addEventListener("click", () => { closeListOptionsMenu(); openStandardModal(); });
 
     el.mineSections.addEventListener("click", onItemListClick);
     el.mineSections.addEventListener("change", onItemListChange);
@@ -706,6 +727,7 @@
     el.tripNotesInput.addEventListener("input", updateTripNotesSaveState);
     el.tripNotesSaveBtn.addEventListener("click", onTripNotesSaveClick);
 
+    el.addFabBtn.addEventListener("click", () => setAddPanelOpen(true));
     el.addForm.addEventListener("submit", onAddItemSubmit);
     el.itemName.addEventListener("input", renderNameSuggestions);
     el.itemName.addEventListener("keydown", onSuggestionKeyDown);
@@ -750,6 +772,12 @@
 
     root.addEventListener("click", (e) => {
       if (!el.itemOptions.hidden && !e.target.closest(".add-layout")) hideSuggestions();
+      if (addPanelOpen && !e.target.closest(".add-card") && !e.target.closest(".add-fab-btn")) {
+        setAddPanelOpen(false);
+      }
+      if (!el.listOptionsMenu.hidden && !e.target.closest("#pack-list-options-btn") && !e.target.closest("#pack-list-options-menu")) {
+        closeListOptionsMenu();
+      }
     });
 
     root.addEventListener("keydown", (e) => {
@@ -757,6 +785,8 @@
       if (!el.standardEditPopup.hidden) return closeStandardEditor();
       const open = root.querySelector(".modal.is-open");
       if (open) closeModal(open);
+      else if (!el.listOptionsMenu.hidden) closeListOptionsMenu();
+      else if (addPanelOpen) setAddPanelOpen(false);
       else if (!el.optionsMenu.hidden) closeOptionsMenu();
     });
   }
@@ -818,12 +848,24 @@
     el.topTabBtns.forEach((btn) => btn.classList.toggle("is-active", btn.dataset.topTab === state.topTab));
     el.topPaneItinerary.hidden = state.topTab !== "itinerary";
     el.topPanePacking.hidden = state.topTab !== "packing";
-    el.addCard.hidden = state.loading || state.topTab !== "packing";
+    const onPacking = !state.loading && state.topTab === "packing";
+    el.addFabBtn.hidden = !onPacking || addPanelOpen;
+    el.addCard.hidden = !onPacking || !addPanelOpen;
+    root.classList.toggle("add-panel-open", onPacking && addPanelOpen);
+  }
+
+  function setAddPanelOpen(open) {
+    addPanelOpen = open;
+    applyTopTab();
+    if (open) el.itemName.focus();
+    else hideSuggestions();
   }
 
   function setTopTab(tab) {
     state.topTab = tab === "packing" ? "packing" : "itinerary";
     localStorage.setItem(TOP_TAB_KEY, state.topTab);
+    addPanelOpen = false;
+    closeListOptionsMenu();
     applyTopTab();
   }
 
@@ -835,8 +877,20 @@
 
   function setTab(tab) {
     state.tab = tab;
+    closeListOptionsMenu();
     setTabButtons();
     render();
+  }
+
+  function toggleListOptionsMenu() {
+    const opening = el.listOptionsMenu.hidden;
+    el.listOptionsMenu.hidden = !opening;
+    el.listOptionsBtn.setAttribute("aria-expanded", String(opening));
+  }
+
+  function closeListOptionsMenu() {
+    el.listOptionsMenu.hidden = true;
+    el.listOptionsBtn.setAttribute("aria-expanded", "false");
   }
 
   function setTabButtons() {
@@ -1569,6 +1623,25 @@
     syncNow();
   }
 
+  async function removeAllItems() {
+    const trip = currentTrip();
+    if (!trip) return;
+    const items = tripItems(trip.id);
+    if (!items.length) return showToast("No items to remove");
+    if (!confirm(`Remove all ${items.length} item(s) from every list on this trip? This includes everyone's items, not just yours.`)) return;
+
+    captureUndo("deleteAll", { itemIds: items.map((i) => i.id) }, `${items.length} items`);
+    for (const item of items) {
+      item.deleted_at = new Date().toISOString();
+      touch(item);
+      await enqueue(item, "packing_items");
+    }
+    await persistLocal();
+    render();
+    showToast(`Removed ${items.length} item${items.length === 1 ? "" : "s"}`);
+    syncNow();
+  }
+
   // ---------------------------------------------------------------------
   // Name suggestions
   // ---------------------------------------------------------------------
@@ -2161,6 +2234,14 @@
         if (!item) continue;
         item.packed = true;
         item.packed_at = new Date().toISOString();
+        touch(item);
+        await enqueue(item, "packing_items");
+      }
+    } else if (action.type === "deleteAll") {
+      for (const id of action.payload.itemIds) {
+        const item = state.items.find((i) => i.id === id);
+        if (!item) continue;
+        item.deleted_at = null;
         touch(item);
         await enqueue(item, "packing_items");
       }
