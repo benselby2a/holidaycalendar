@@ -376,7 +376,7 @@
               <summary>More options</summary>
               <div class="add-row">
                 <select id="pack-item-category" aria-label="Category"></select>
-                <input id="pack-item-qty" type="number" min="1" max="99" value="1" aria-label="Quantity" />
+                <input id="pack-item-qty" type="number" inputmode="numeric" min="1" max="99" value="1" aria-label="Quantity" />
               </div>
               <div class="add-row">
                 <select id="pack-item-scope" aria-label="List">
@@ -517,7 +517,7 @@
                 </div>
                 <div class="form-row">
                   <label>Base qty
-                    <input id="pack-standard-base-input" type="number" min="0" max="99" value="1" />
+                    <input id="pack-standard-base-input" type="number" inputmode="numeric" min="0" max="99" value="1" />
                   </label>
                   <label>Per day
                     <select id="pack-standard-perday-input">
@@ -529,7 +529,7 @@
                     </select>
                   </label>
                   <label>Max qty
-                    <input id="pack-standard-max-input" type="number" min="0" max="99" value="0" />
+                    <input id="pack-standard-max-input" type="number" inputmode="numeric" min="0" max="99" value="0" />
                   </label>
                 </div>
                 <fieldset class="checkbox-grid">
@@ -1976,7 +1976,7 @@
                   </label>
                   <span class="wizard-row-meta">
                     <span class="muted-line">${escapeHtml(row.category)}${row.exists ? " · already on list" : ""}</span>
-                    <input class="qty-input" type="number" min="1" max="99" value="${row.quantity}" data-preview-qty="${row.key}"${row.exists ? " disabled" : ""} aria-label="Quantity" />
+                    <input class="qty-input" type="number" inputmode="numeric" min="1" max="99" value="${row.quantity}" data-preview-qty="${row.key}"${row.exists ? " disabled" : ""} aria-label="Quantity" />
                     <button class="icon-btn cog-btn" type="button" data-edit-standard-from-wizard="${row.standardItemId}" aria-label="Edit ${escapeHtml(row.name)}'s wizard settings">⚙</button>
                   </span>
                 </li>`).join("")}
@@ -2096,6 +2096,7 @@
           <label class="switch-row" title="Enabled">
             <input type="checkbox" data-toggle-standard="${std.id}"${std.enabled === false ? "" : " checked"} />
           </label>
+          <button class="delete-btn" type="button" data-delete-standard="${std.id}" aria-label="Delete ${escapeHtml(std.name)}">✕</button>
         </span>
       </li>`;
   }
@@ -2105,6 +2106,8 @@
     if (edit) return openStandardEditor(edit.dataset.editStandard);
     const toggle = e.target.closest("[data-toggle-standard]");
     if (toggle) return toggleStandardEnabled(toggle.dataset.toggleStandard, toggle.checked);
+    const del = e.target.closest("[data-delete-standard]");
+    if (del) return deleteStandardItem(del.dataset.deleteStandard);
   }
 
   async function toggleStandardEnabled(id, enabled) {
@@ -2178,18 +2181,24 @@
   }
 
   async function deleteEditedStandardItem() {
-    const std = state.standardItems.find((s) => s.id === state.editingStandardId);
-    if (!std) return;
-    if (!confirm(`Delete the standard item "${std.name}"? Items already on a list are kept.`)) return;
+    if (!state.editingStandardId) return;
+    const deleted = await deleteStandardItem(state.editingStandardId);
+    if (deleted) closeStandardEditor();
+  }
+
+  async function deleteStandardItem(id) {
+    const std = state.standardItems.find((s) => s.id === id);
+    if (!std) return false;
+    if (!confirm(`Delete the standard item "${std.name}"? Items already on a list are kept.`)) return false;
 
     std.deleted_at = new Date().toISOString();
     touch(std);
     await persistLocal();
     await enqueue(std, "standard_items");
-    closeStandardEditor();
     renderStandardList();
     showStandardFeedback(`Deleted ${std.name}`);
     syncNow();
+    return true;
   }
 
   function showStandardFeedback(message) {
