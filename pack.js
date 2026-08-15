@@ -1074,10 +1074,9 @@
     notes: "Notes"
   };
 
-  // Rendering order: everything before the Morning/Afternoon/Evening plan
-  // columns, then "notes" after them — matches the cards view's own field
-  // order (accommodation/transport/meals, then plans, then notes).
-  const DAY_FIELDS_BEFORE_PLANS = ["accommodation", "transport", "breakfast", "lunch", "dinner"];
+  // Column order: Accommodation, then the Morning/Afternoon/Evening plan
+  // columns, then the meals, then Transport, then Notes last.
+  const MEAL_FIELDS = ["breakfast", "lunch", "dinner"];
   const PLAN_SLOTS = ["morning", "afternoon", "evening"];
 
   function itineraryTableHtml(trip, dates) {
@@ -1088,7 +1087,9 @@
     // Skip a column entirely (header + cells) when no day in the trip has
     // anything in it — most trips only ever fill in a handful of these.
     const hasData = (field) => dates.some((d) => hasText(rowFor(d)[field]));
-    const visibleBefore = DAY_FIELDS_BEFORE_PLANS.filter(hasData);
+    const accommodationVisible = hasData("accommodation");
+    const visibleMeals = MEAL_FIELDS.filter(hasData);
+    const transportVisible = hasData("transport");
     const notesVisible = hasData("notes");
 
     // Each plan slot is checked independently, same as every other
@@ -1115,7 +1116,7 @@
       }
     }
     const visibleSlots = PLAN_SLOTS.filter((s) => slotVisible[s]);
-    const hasAnyColumn = visibleBefore.length > 0 || notesVisible || visibleSlots.length > 0;
+    const hasAnyColumn = accommodationVisible || visibleMeals.length > 0 || transportVisible || notesVisible || visibleSlots.length > 0;
 
     if (!hasAnyColumn) {
       const rows = dates
@@ -1139,8 +1140,14 @@
         </div>`;
     }
 
+    const mergedFields = [
+      ...(accommodationVisible ? ["accommodation"] : []),
+      ...visibleMeals,
+      ...(transportVisible ? ["transport"] : []),
+      ...(notesVisible ? ["notes"] : [])
+    ];
     const merges = {};
-    for (const field of [...visibleBefore, ...(notesVisible ? ["notes"] : [])]) {
+    for (const field of mergedFields) {
       merges[field] = computeMergeRuns(dates, (dateStr) => rowFor(dateStr)[field] || "");
     }
     const mergeCell = (field, row, i) => {
@@ -1179,22 +1186,26 @@
               <button type="button" class="edit-day-btn" data-edit-day="${dateStr}" aria-label="Edit ${escapeHtml(formatDayHeading(dateStr, i + 1))}">✎</button>
               ${escapeHtml(formatDayHeading(dateStr, i + 1))}
             </td>
-            ${visibleBefore.map((field) => mergeCell(field, row, i)).join("")}
+            ${accommodationVisible ? mergeCell("accommodation", row, i) : ""}
             ${planCells}
+            ${visibleMeals.map((field) => mergeCell(field, row, i)).join("")}
+            ${transportVisible ? mergeCell("transport", row, i) : ""}
             ${notesVisible ? mergeCell("notes", row, i) : ""}
           </tr>`;
       })
       .join("");
 
-    const beforeHeadCells = visibleBefore.map((field) => `<th>${DAY_FIELD_LABELS[field]}</th>`).join("");
+    const accommodationHeadCell = accommodationVisible ? `<th>${DAY_FIELD_LABELS.accommodation}</th>` : "";
     const planHeadCells = visibleSlots.map((slot) => `<th>${slot.charAt(0).toUpperCase()}${slot.slice(1)}</th>`).join("");
+    const mealsHeadCells = visibleMeals.map((field) => `<th>${DAY_FIELD_LABELS[field]}</th>`).join("");
+    const transportHeadCell = transportVisible ? `<th>${DAY_FIELD_LABELS.transport}</th>` : "";
     const notesHeadCell = notesVisible ? `<th>${DAY_FIELD_LABELS.notes}</th>` : "";
 
     return `
       <div class="table-scroll">
         <table class="itinerary-table">
           <thead><tr>
-            <th>Day</th>${beforeHeadCells}${planHeadCells}${notesHeadCell}
+            <th>Day</th>${accommodationHeadCell}${planHeadCells}${mealsHeadCells}${transportHeadCell}${notesHeadCell}
           </tr></thead>
           <tbody>${rows}</tbody>
         </table>
