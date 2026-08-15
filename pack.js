@@ -1939,26 +1939,25 @@
     const mandatory = candidates.filter((s) => s.mandatory).sort((a, b) => a.name.localeCompare(b.name));
     const suggested = candidates
       .filter((s) => !s.mandatory)
-      .map((std) => ({ std, score: wizardRelevanceScore(std, season, types) }))
-      .sort((a, b) => b.score - a.score || a.std.name.localeCompare(b.std.name))
-      .map((c) => c.std);
+      .map((std) => ({ std, score: wizardRelevanceScore(std, season, types), tailored: wizardIsTailored(std, season, types) }))
+      .sort((a, b) => b.score - a.score || a.std.name.localeCompare(b.std.name));
 
     const rows = [];
-    const addRows = (std, isMandatory) => {
+    const addRows = (std, isMandatory, tailored) => {
       const quantity = quantityForStandardItem(std, days);
       if (std.applies_to === "trip") {
         const exists = state.items.some((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id === std.id && i.scope === "shared");
-        rows.push({ key: `${std.id}:shared`, standardItemId: std.id, name: std.name, category: std.category, scope: "shared", travellerId: null, ownerLabel: "Shared", quantity, mandatory: isMandatory, include: !exists && isMandatory, exists });
+        rows.push({ key: `${std.id}:shared`, standardItemId: std.id, name: std.name, category: std.category, scope: "shared", travellerId: null, ownerLabel: "Shared", quantity, mandatory: isMandatory, tailored, include: !exists && isMandatory, exists });
       } else {
         for (const travellerId of state.wizard.selectedTravellers) {
           const exists = state.items.some((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id === std.id && i.traveller_id === travellerId && i.scope === "personal");
-          rows.push({ key: `${std.id}:${travellerId}`, standardItemId: std.id, name: std.name, category: std.category, scope: "personal", travellerId, ownerLabel: travellerName(travellerId), quantity, mandatory: isMandatory, include: !exists && isMandatory, exists });
+          rows.push({ key: `${std.id}:${travellerId}`, standardItemId: std.id, name: std.name, category: std.category, scope: "personal", travellerId, ownerLabel: travellerName(travellerId), quantity, mandatory: isMandatory, tailored, include: !exists && isMandatory, exists });
         }
       }
     };
 
-    for (const std of mandatory) addRows(std, true);
-    for (const std of suggested) addRows(std, false);
+    for (const std of mandatory) addRows(std, true, true);
+    for (const { std, tailored } of suggested) addRows(std, false, tailored);
     return rows;
   }
 
@@ -1983,6 +1982,21 @@
     return seasonScore + typeScore;
   }
 
+  // A tighter, binary version of the same check: true only when the item
+  // has no season/trip-type tag it actively fails on this trip. Drives
+  // which suggested items show up front by default vs. tucked under
+  // "Show more" - the score above still orders both groups, this just
+  // decides which group. Nothing built on this ever excludes an item
+  // outright (that was the earlier bug); it only decides what's visible
+  // without an extra tap.
+  function wizardIsTailored(std, season, types) {
+    const seasons = (std.seasons || []).filter(Boolean);
+    const seasonOk = !seasons.length || seasons.includes("Any") || (season && season !== "Any" && seasons.includes(season));
+    const tripTypes = (std.trip_types || []).filter(Boolean);
+    const typeOk = !tripTypes.length || tripTypes.includes("Any") || tripTypes.some((t) => types.includes(t));
+    return seasonOk && typeOk;
+  }
+
   function renderWizardPreview() {
     const rows = state.wizard?.preview || [];
     el.wizardPreviewEmpty.hidden = rows.length > 0;
@@ -1997,22 +2011,26 @@
     el.wizardPreview.innerHTML = [...groups.entries()]
       .map(([label, groupRows]) => {
         const included = groupRows.filter((r) => r.include).length;
-        // Each group's rows already arrive mandatory-first (buildWizardPreview
-        // adds all mandatory rows before any suggested ones), so a single
-        // pass catches the exact point where the tier switches.
-        const itemsHtml = [];
-        let suggestedHeaderShown = false;
-        for (const row of groupRows) {
-          if (!row.mandatory && !suggestedHeaderShown) {
-            itemsHtml.push(`<li class="wizard-section-label">Suggested — check the ones you want</li>`);
-            suggestedHeaderShown = true;
-          }
-          itemsHtml.push(wizardRowHtml(row));
-        }
+        const mandatoryRows = groupRows.filter((r) => r.mandatory);
+        const tailoredRows = groupRows.filter((r) => !r.mandatory && r.tailored);
+        const moreRows = groupRows.filter((r) => !r.mandatory && !r.tailored);
+
+        const suggestedHeader = tailoredRows.length || moreRows.length
+          ? `<li class="wizard-section-label">Suggested — check the ones you want</li>`
+          : "";
+        const moreToggle = moreRows.length
+          ? `<li class="wizard-more-toggle">
+               <details class="add-more">
+                 <summary>Show ${moreRows.length} more item${moreRows.length === 1 ? "" : "s"}</summary>
+                 <ul class="item-list">${moreRows.map(wizardRowHtml).join("")}</ul>
+               </details>
+             </li>`
+          : "";
+
         return `
           <section class="card section-card">
             <header class="section-head"><h3>${escapeHtml(label)}</h3><span class="section-count">${included} new</span></header>
-            <ul class="item-list">${itemsHtml.join("")}</ul>
+            <ul class="item-list">${mandatoryRows.map(wizardRowHtml).join("")}${suggestedHeader}${tailoredRows.map(wizardRowHtml).join("")}${moreToggle}</ul>
           </section>`;
       })
       .join("");
