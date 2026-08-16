@@ -329,7 +329,7 @@
             <button id="pack-tab-everyone-btn" class="tab-btn" type="button" data-tab="everyone">Everyone</button>
             <button id="pack-list-options-btn" class="icon-btn cog-btn" type="button" aria-label="List options" aria-haspopup="true" aria-expanded="false">⚙</button>
             <div id="pack-list-options-menu" class="list-options-menu" hidden>
-              <button id="pack-add-items-btn" class="icon-btn" type="button">🐳🪄 Add Items</button>
+              <button id="pack-add-items-btn" class="icon-btn" type="button">🐳🪄 Add Favourite Items</button>
               <button id="pack-database-btn" class="icon-btn" type="button">Item Database</button>
               <button id="pack-remove-all-btn" class="icon-btn danger-btn" type="button">Remove All Items</button>
             </div>
@@ -337,7 +337,7 @@
 
           <div id="pack-pane-mine" class="pane">
             <div id="pack-mine-sections"></div>
-            <p id="pack-mine-empty" class="empty-note" hidden>Nothing on your list yet — use Add Items, or the + button.</p>
+            <p id="pack-mine-empty" class="empty-note" hidden>Nothing on your list yet — use Add Favourite Items, or the + button.</p>
           </div>
 
           <div id="pack-pane-shared" class="pane" hidden>
@@ -1788,7 +1788,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // Add Items picker (replaces the old Packing Wizard).
+  // Add Favourite Items (replaces the old Packing Wizard).
   //
   // The catalogue is just name + category now; how relevant an item is to
   // this trip is expressed by the user favouriting it, not by season /
@@ -1798,7 +1798,7 @@
   // item row itself are how you scale it afterwards.
   // ---------------------------------------------------------------------
 
-  // "Add Items" is a single tap: everything you've starred that isn't
+  // "Add Favourite Items" is a single tap: everything you've starred that isn't
   // already on your list goes on it. Browsing and starring happen in the
   // Item Database; one-off items go through the + add form (which now
   // registers them in the catalogue anyway), so there's no picker in
@@ -1856,7 +1856,7 @@
   }
 
   // Catalogue items already on this trip for this person, so a second tap of
-  // Add Items doesn't duplicate what's there.
+  // Add Favourite Items doesn't duplicate what's there.
   // What's already on the trip for this person, keyed BOTH by catalogue id
   // and by canonical name. The name half matters because items added before
   // manual adds started registering in the catalogue carry a null
@@ -1933,7 +1933,7 @@
 
 
   // ---------------------------------------------------------------------
-  // Item Database — the catalogue itself, separate from the Add Items
+  // Item Database — the catalogue itself, separate from Add Favourite Items
   // picker. The picker is for "put this on my list"; this is for "fix the
   // catalogue" (rename, recategorise, remove). Editing lives here rather
   // than in the picker so a mis-tap while adding items can't silently
@@ -1957,7 +1957,7 @@
       .sort((a, b) => a.name.localeCompare(b.name));
 
     if (!state.standardItems.some((s) => !s.deleted_at)) {
-      el.databaseList.innerHTML = `<p class="empty-note">No items yet. Add some from Add Items.</p>`;
+      el.databaseList.innerHTML = `<p class="empty-note">No items yet. Add one with the + button on the packing list.</p>`;
       return;
     }
     if (!all.length) {
