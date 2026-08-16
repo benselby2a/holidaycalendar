@@ -1691,7 +1691,9 @@
       .map((id) => state.standardItems.find((s) => s.id === id && !s.deleted_at))
       .filter(Boolean)
       .sort((a, b) => a.name.localeCompare(b.name))
-      .filter((std) => !already.has(std.id));
+      // Purely additive: anything already on the list is skipped outright,
+      // never re-added and never edited (no quantity bumps, no re-scoping).
+      .filter((std) => !already.has(std.id) && !already.has(`name:${canonicalKey(std.name)}`));
 
     if (!missing.length) return showToast("All your favourites are already on the list");
     if (missing.some((std) => !std.shared) && !state.whoami) return showToast("Add a traveller first");
@@ -1730,17 +1732,24 @@
 
   // Catalogue items already on this trip for this person, so a second tap of
   // Add Items doesn't duplicate what's there.
+  // What's already on the trip for this person, keyed BOTH by catalogue id
+  // and by canonical name. The name half matters because items added before
+  // manual adds started registering in the catalogue carry a null
+  // standard_item_id - matching on the link alone would add a second copy of
+  // something plainly already on the list.
   function addedStandardIdsForCurrentUser() {
     const trip = currentTrip();
-    if (!trip) return new Set();
-    return new Set(
-      state.items
-        .filter((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id)
-        // A shared item is on the trip once for everyone; a personal one
-        // only counts as "added" if it's on *my* list.
-        .filter((i) => (i.scope === "shared" ? true : i.traveller_id === state.whoami))
-        .map((i) => i.standard_item_id)
-    );
+    const keys = new Set();
+    if (!trip) return keys;
+    for (const i of state.items) {
+      if (i.deleted_at || i.holiday_id !== trip.id) continue;
+      // A shared item is on the trip once for everyone; a personal one only
+      // counts as "added" if it's on *my* list.
+      if (i.scope !== "shared" && i.traveller_id !== state.whoami) continue;
+      if (i.standard_item_id) keys.add(i.standard_item_id);
+      keys.add(`name:${canonicalKey(i.name)}`);
+    }
+    return keys;
   }
 
   async function toggleFavourite(standardItemId) {
