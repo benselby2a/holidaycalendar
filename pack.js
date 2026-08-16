@@ -132,7 +132,6 @@
     state.topTab = localStorage.getItem(TOP_TAB_KEY) === "packing" ? "packing" : "itinerary";
 
     el.itemCategory.innerHTML = optionsHtml(CATEGORIES);
-    el.pickerCategoryInput.innerHTML = optionsHtml(CATEGORIES);
 
     categoryManuallySet = false;
     await refreshCurrentUser();
@@ -405,24 +404,6 @@
         </div>
       </div>
 
-      <div id="pack-picker-modal" class="modal">
-        <div class="modal-content wide">
-          <div class="modal-header">
-            <h2>🐳🪄 Add Items</h2>
-            <button id="pack-close-picker-btn" class="icon-btn" type="button">✕</button>
-          </div>
-          <p class="muted-line">Tap an item to add it to your list. Star the ones you use often so they come up first next time.</p>
-          <form id="pack-picker-add-form" class="db-filter-wrap" autocomplete="off">
-            <input id="pack-picker-filter-input" type="text" placeholder="Search, or type a new item name" autocomplete="off" />
-            <select id="pack-picker-category-input" aria-label="Category for new item"></select>
-            <button id="pack-picker-create-btn" class="icon-btn primary-btn" type="submit">Add New</button>
-          </form>
-          <div id="pack-picker-feedback" class="db-feedback" hidden>Updated</div>
-          <div id="pack-picker-list"></div>
-          <p id="pack-picker-empty" class="empty-note" hidden>No items yet — type a name above to create your first one.</p>
-        </div>
-      </div>
-
       <div id="pack-database-modal" class="modal">
         <div class="modal-content wide">
           <div class="modal-header">
@@ -521,14 +502,6 @@
     el.daySaveBtn = q("pack-day-save-btn");
     el.dayCancelBtn = q("pack-day-cancel-btn");
 
-    el.pickerModal = q("pack-picker-modal");
-    el.closePickerBtn = q("pack-close-picker-btn");
-    el.pickerList = q("pack-picker-list");
-    el.pickerEmpty = q("pack-picker-empty");
-    el.pickerAddForm = q("pack-picker-add-form");
-    el.pickerFilterInput = q("pack-picker-filter-input");
-    el.pickerCategoryInput = q("pack-picker-category-input");
-    el.pickerFeedback = q("pack-picker-feedback");
 
     el.databaseModal = q("pack-database-modal");
     el.closeDatabaseBtn = q("pack-close-database-btn");
@@ -555,7 +528,7 @@
     el.tabBtns.forEach((btn) => btn.addEventListener("click", () => setTab(btn.dataset.tab)));
     el.listOptionsBtn.addEventListener("click", toggleListOptionsMenu);
     el.removeAllBtn.addEventListener("click", () => { closeListOptionsMenu(); removeAllItems(); });
-    el.addItemsBtn.addEventListener("click", () => { closeListOptionsMenu(); openPicker(); });
+    el.addItemsBtn.addEventListener("click", () => { closeListOptionsMenu(); addMissingFavourites(); });
     el.databaseBtn.addEventListener("click", () => { closeListOptionsMenu(); openDatabase(); });
 
     el.mineSections.addEventListener("click", onItemListClick);
@@ -587,10 +560,6 @@
     el.dayEditBody.addEventListener("change", onDayEditFieldChange);
     el.dayEditBody.addEventListener("click", onDayEditApplyAllClick);
 
-    el.closePickerBtn.addEventListener("click", () => closeModal(el.pickerModal));
-    el.pickerAddForm.addEventListener("submit", onPickerCreateSubmit);
-    el.pickerFilterInput.addEventListener("input", renderPicker);
-    el.pickerList.addEventListener("click", onPickerListClick);
 
     el.closeDatabaseBtn.addEventListener("click", () => closeModal(el.databaseModal));
     el.databaseFilterInput.addEventListener("input", renderDatabase);
@@ -860,7 +829,7 @@
         <button class="item-main-btn" type="button" data-toggle-item="${item.id}">
           <span class="check-box">${item.packed ? "✓" : ""}</span>
           <span class="item-name">${escapeHtml(item.name)}</span>
-          ${item.quantity > 1 ? `<span class="qty-badge">×${item.quantity}</span>` : ""}
+          <span class="qty-badge">×${item.quantity}</span>
           ${sharedTag}
           ${ownerTag}
         </button>
@@ -1705,11 +1674,49 @@
   // item row itself are how you scale it afterwards.
   // ---------------------------------------------------------------------
 
-  function openPicker() {
-    if (!currentTrip()) return;
-    el.pickerFilterInput.value = "";
-    renderPicker();
-    openModal(el.pickerModal);
+  // "Add Items" is a single tap: everything you've starred that isn't
+  // already on your list goes on it. Browsing and starring happen in the
+  // Item Database; one-off items go through the + add form (which now
+  // registers them in the catalogue anyway), so there's no picker in
+  // between.
+  async function addMissingFavourites() {
+    const trip = currentTrip();
+    if (!trip) return;
+
+    const favIds = favouriteIdsForCurrentUser();
+    if (!favIds.size) return showToast("No favourites yet — star some in Item Database");
+
+    const already = addedStandardIdsForCurrentUser();
+    const missing = [...favIds]
+      .map((id) => state.standardItems.find((s) => s.id === id && !s.deleted_at))
+      .filter(Boolean)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .filter((std) => !already.has(std.id));
+
+    if (!missing.length) return showToast("All your favourites are already on the list");
+    if (missing.some((std) => !std.shared) && !state.whoami) return showToast("Add a traveller first");
+
+    const created = [];
+    for (const std of missing) {
+      const item = {
+        id: crypto.randomUUID(), holiday_id: trip.id, household_id: APP_CONFIG.householdId,
+        name: std.name, category: std.category, quantity: 1,
+        scope: std.shared ? "shared" : "personal",
+        traveller_id: std.shared ? null : state.whoami,
+        packed: false, packed_at: null, notes: null, source: "favourites", standard_item_id: std.id, sort_order: 0,
+        deleted_at: null, updated_at: new Date().toISOString(), updated_by: currentUserId
+      };
+      state.items.push(item);
+      created.push(item.id);
+      await enqueue(item, "packing_items");
+    }
+
+    // One undo entry for the whole batch, not one per item.
+    captureUndo("bulkAdd", { itemIds: created }, `${created.length} items`);
+    await persistLocal();
+    render();
+    showToast(`Added ${created.length} item${created.length === 1 ? "" : "s"}`);
+    syncNow();
   }
 
   function favouriteIdsForCurrentUser() {
@@ -1721,9 +1728,8 @@
     );
   }
 
-  // Which catalogue items are already on this person's list for this trip,
-  // so the picker can show them as added rather than letting you add a
-  // duplicate.
+  // Catalogue items already on this trip for this person, so a second tap of
+  // Add Items doesn't duplicate what's there.
   function addedStandardIdsForCurrentUser() {
     const trip = currentTrip();
     if (!trip) return new Set();
@@ -1737,71 +1743,8 @@
     );
   }
 
-  function renderPicker() {
-    const query = canonicalKey(el.pickerFilterInput.value);
-    const favIds = favouriteIdsForCurrentUser();
-    const addedIds = addedStandardIdsForCurrentUser();
-
-    const all = state.standardItems
-      .filter((s) => !s.deleted_at)
-      .filter((s) => !query || canonicalKey(s.name).includes(query) || canonicalKey(s.category).includes(query));
-
-    el.pickerEmpty.hidden = state.standardItems.some((s) => !s.deleted_at);
-
-    const byName = (a, b) => a.name.localeCompare(b.name);
-    const favourites = all.filter((s) => favIds.has(s.id)).sort(byName);
-    const rest = all.filter((s) => !favIds.has(s.id));
-
-    // Everything else grouped by category so a long catalogue stays
-    // navigable; favourites float to their own section at the top.
-    const groups = new Map();
-    for (const std of rest.sort(byName)) {
-      const key = CATEGORIES.includes(std.category) ? std.category : "Other";
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(std);
-    }
-    const ordered = CATEGORIES.filter((c) => groups.has(c)).map((c) => [c, groups.get(c)]);
-
-    const section = (label, list) => `
-      <section class="card section-card">
-        <header class="section-head"><h3>${escapeHtml(label)}</h3><span class="section-count">${list.length}</span></header>
-        <ul class="item-list">${list.map((std) => pickerRowHtml(std, favIds.has(std.id), addedIds.has(std.id))).join("")}</ul>
-      </section>`;
-
-    el.pickerList.innerHTML =
-      (favourites.length ? section("★ Favourites", favourites) : "") +
-      ordered.map(([label, list]) => section(label, list)).join("");
-
-    if (all.length === 0 && state.standardItems.some((s) => !s.deleted_at)) {
-      el.pickerList.innerHTML = `<p class="empty-note">Nothing matches — type a name above and press Add New to create it.</p>`;
-    }
-  }
-
-  function pickerRowHtml(std, isFavourite, isAdded) {
-    return `
-      <li class="picker-row${isAdded ? " is-added" : ""}">
-        <button class="fav-btn${isFavourite ? " is-on" : ""}" type="button" data-toggle-fav="${std.id}"
-          aria-label="${isFavourite ? "Remove" : "Add"} ${escapeHtml(std.name)} from favourites"
-          aria-pressed="${isFavourite ? "true" : "false"}">${isFavourite ? "★" : "☆"}</button>
-        <button class="picker-main" type="button" data-add-standard="${std.id}"${isAdded ? " disabled" : ""}>
-          <span class="picker-name">${escapeHtml(std.name)}</span>
-          <span class="muted-line">${escapeHtml(std.category)}${isAdded ? " · on your list" : ""}</span>
-        </button>
-        <button class="delete-btn" type="button" data-delete-standard="${std.id}" aria-label="Delete ${escapeHtml(std.name)} from the catalogue">✕</button>
-      </li>`;
-  }
-
-  function onPickerListClick(e) {
-    const fav = e.target.closest("[data-toggle-fav]");
-    if (fav) return toggleFavourite(fav.dataset.toggleFav);
-    const add = e.target.closest("[data-add-standard]");
-    if (add) return addStandardItemToList(add.dataset.addStandard);
-    const del = e.target.closest("[data-delete-standard]");
-    if (del) return deleteStandardItem(del.dataset.deleteStandard);
-  }
-
   async function toggleFavourite(standardItemId) {
-    if (!currentUserId) return showPickerFeedback("Sign in to use favourites");
+    if (!currentUserId) return showDatabaseFeedback("Sign in to use favourites");
     const std = state.standardItems.find((s) => s.id === standardItemId);
     const existing = state.favourites.find((f) => f.standard_item_id === standardItemId && f.user_id === currentUserId);
 
@@ -1809,7 +1752,7 @@
       existing.deleted_at = new Date().toISOString();
       touch(existing);
       await enqueue(existing, "item_favourites");
-      showPickerFeedback(`${std?.name || "Item"} un-starred`);
+      showDatabaseFeedback(`${std?.name || "Item"} un-starred`);
     } else if (existing) {
       // Re-favouriting something previously un-starred: revive the row
       // rather than inserting a second one, which the unique index on
@@ -1817,7 +1760,7 @@
       existing.deleted_at = null;
       touch(existing);
       await enqueue(existing, "item_favourites");
-      showPickerFeedback(`${std?.name || "Item"} starred`);
+      showDatabaseFeedback(`${std?.name || "Item"} starred`);
     } else {
       const fav = {
         id: crypto.randomUUID(),
@@ -1830,79 +1773,16 @@
       };
       state.favourites.push(fav);
       await enqueue(fav, "item_favourites");
-      showPickerFeedback(`${std?.name || "Item"} starred`);
+      showDatabaseFeedback(`${std?.name || "Item"} starred`);
     }
 
     await persistLocal();
-    renderPicker();
-    syncNow();
-  }
-
-  async function addStandardItemToList(standardItemId) {
-    const trip = currentTrip();
-    const std = state.standardItems.find((s) => s.id === standardItemId);
-    if (!trip || !std) return;
-    if (!std.shared && !state.whoami) return showPickerFeedback("No traveller to add to");
-
-    const item = {
-      id: crypto.randomUUID(), holiday_id: trip.id, household_id: APP_CONFIG.householdId,
-      name: std.name, category: std.category, quantity: 1,
-      scope: std.shared ? "shared" : "personal",
-      // Shared items belong to the trip, not a person - traveller_id on a
-      // shared row means "who's responsible for packing it", left unset here.
-      traveller_id: std.shared ? null : state.whoami,
-      packed: false, packed_at: null, notes: null, source: "picker", standard_item_id: std.id, sort_order: 0,
-      deleted_at: null, updated_at: new Date().toISOString(), updated_by: currentUserId
-    };
-    state.items.push(item);
-    captureUndo("add", { itemId: item.id }, std.name);
-    await persistLocal();
-    await enqueue(item, "packing_items");
-    renderPicker();
-    render();
-    showPickerFeedback(`Added ${std.name}`);
     syncNow();
   }
 
   // Creating a catalogue entry from the picker's own search box: whatever
   // you typed becomes the name, so a fruitless search flows straight into
   // adding the thing you were looking for.
-  async function onPickerCreateSubmit(e) {
-    e.preventDefault();
-    const name = normalizeName(el.pickerFilterInput.value);
-    if (!name) return;
-
-    const duplicate = state.standardItems.find((s) => !s.deleted_at && canonicalKey(s.name) === canonicalKey(name));
-    if (duplicate) {
-      el.pickerFilterInput.value = "";
-      renderPicker();
-      return showPickerFeedback(`${name} is already in the list`);
-    }
-
-    const std = {
-      id: crypto.randomUUID(),
-      household_id: APP_CONFIG.householdId,
-      name,
-      category: el.pickerCategoryInput.value || guessCategory(name) || "Other",
-      shared: false,
-      sort_order: 0,
-      deleted_at: null,
-      updated_at: new Date().toISOString()
-    };
-    state.standardItems.push(std);
-    await persistLocal();
-    await enqueue(std, "standard_items");
-
-    // A freshly created item is one you clearly want, so star it and put it
-    // straight on the list - otherwise creating it is three taps, not one.
-    await toggleFavourite(std.id);
-    await addStandardItemToList(std.id);
-
-    el.pickerFilterInput.value = "";
-    renderPicker();
-    showPickerFeedback(`Added ${name}`);
-  }
-
   async function deleteStandardItem(id) {
     const std = state.standardItems.find((s) => s.id === id);
     if (!std) return false;
@@ -1912,18 +1792,11 @@
     touch(std);
     await persistLocal();
     await enqueue(std, "standard_items");
-    if (!el.pickerModal.classList.contains("is-open")) showDatabaseFeedback(`Deleted ${std.name}`);
-    else { renderPicker(); showPickerFeedback(`Deleted ${std.name}`); }
+    showDatabaseFeedback(`Deleted ${std.name}`);
     syncNow();
     return true;
   }
 
-  function showPickerFeedback(message) {
-    el.pickerFeedback.textContent = message;
-    el.pickerFeedback.hidden = false;
-    clearTimeout(standardFeedbackTimer);
-    standardFeedbackTimer = setTimeout(() => { el.pickerFeedback.hidden = true; }, 2000);
-  }
 
   // ---------------------------------------------------------------------
   // Item Database — the catalogue itself, separate from the Add Items
@@ -2005,9 +1878,44 @@
     if (!std) return;
     std.shared = !std.shared;
     touch(std);
-    await persistLocal();
     await enqueue(std, "standard_items");
+
+    // Move anything already on this trip to match, otherwise flipping the
+    // toggle appears to do nothing for items you've already added - they'd
+    // sit on the personal list while the catalogue says shared.
+    const trip = currentTrip();
+    const existing = trip
+      ? state.items.filter((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id === std.id)
+      : [];
+
+    if (std.shared) {
+      // packing_items_wizard_unique keys on coalesce(traveller_id, <zero
+      // uuid>), so two people's personal copies would collide as one shared
+      // row. Keep the first and drop the rest rather than 409 on sync.
+      const [keep, ...surplus] = existing;
+      if (keep) {
+        keep.scope = "shared";
+        keep.traveller_id = null;
+        touch(keep);
+        await enqueue(keep, "packing_items");
+      }
+      for (const dupe of surplus) {
+        dupe.deleted_at = new Date().toISOString();
+        touch(dupe);
+        await enqueue(dupe, "packing_items");
+      }
+    } else {
+      for (const item of existing) {
+        item.scope = "personal";
+        item.traveller_id = item.traveller_id || state.whoami;
+        touch(item);
+        await enqueue(item, "packing_items");
+      }
+    }
+
+    await persistLocal();
     renderDatabase();
+    render();
     showDatabaseFeedback(`${std.name} → ${std.shared ? "Shared list" : "personal list"}`);
     syncNow();
   }

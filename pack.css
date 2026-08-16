@@ -603,123 +603,6 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .inline-form { display: flex; gap: 8px; margin-top: 12px; }
 .pack-screen .inline-form input { flex: 1; }
 
-/* ------------------------------------------------------- add items picker */
-.pack-screen .picker-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border-top: 1px solid var(--border);
-  padding: 4px 0;
-}
-.pack-screen .picker-row:first-child { border-top: none; }
-.pack-screen .picker-row.is-added .picker-main { opacity: 0.5; cursor: default; }
-.pack-screen .picker-main {
-  flex: 1;
-  display: grid;
-  gap: 2px;
-  background: none;
-  border: none;
-  color: var(--text);
-  text-align: left;
-  padding: 8px 2px;
-  min-height: 44px;
-  min-width: 0;
-  cursor: pointer;
-}
-.pack-screen .picker-name { font-weight: 600; }
-.pack-screen .fav-btn {
-  flex: none;
-  width: 34px;
-  height: 34px;
-  min-height: 0;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface);
-  color: var(--muted);
-  font-size: 1.05rem;
-  line-height: 1;
-  cursor: pointer;
-}
-.pack-screen .fav-btn.is-on { color: #f59e0b; border-color: #f59e0b; background: var(--brand-soft); }
-.pack-screen .picker-row .delete-btn {
-  width: 28px;
-  height: 28px;
-  border-radius: 6px;
-  font-size: 0.72rem;
-}
-/* The search box doubles as the "name a new item" field, so it needs room;
-   the category select beside it stays compact. */
-.pack-screen .db-filter-wrap #pack-picker-filter-input { flex: 1; min-width: 0; }
-.pack-screen .db-filter-wrap #pack-picker-category-input { flex: none; width: auto; min-width: 116px; }
-.pack-screen .db-filter-wrap .icon-btn { flex: none; }
-
-/* Breathing room between the search/filter row and the first section card,
-   which otherwise sat flush against it. */
-.pack-screen #pack-database-filter-input { margin-bottom: 4px; }
-.pack-screen #pack-database-list,
-.pack-screen #pack-picker-list { margin-top: 16px; }
-.pack-screen #pack-database-feedback + #pack-database-list,
-.pack-screen #pack-picker-feedback:not([hidden]) + #pack-picker-list { margin-top: 10px; }
-
-/* Section headers in both modals read as dividers, not just bold text:
-   uppercase, tracked out, brand-coloured, with a rule under them. */
-.pack-screen #pack-database-list .section-head,
-.pack-screen #pack-picker-list .section-head {
-  padding: 0 0 8px;
-  margin-bottom: 8px;
-  border-bottom: 2px solid var(--border);
-}
-.pack-screen #pack-database-list .section-head h3,
-.pack-screen #pack-picker-list .section-head h3 {
-  font-size: 0.76rem;
-  font-weight: 800;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--brand);
-}
-.pack-screen #pack-database-list .section-count,
-.pack-screen #pack-picker-list .section-count {
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--brand);
-  background: var(--brand-soft);
-  border-radius: 999px;
-  padding: 2px 8px;
-}
-
-/* --------------------------------------------------- item database rows */
-.pack-screen .database-row { gap: 8px; }
-.pack-screen .database-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pack-screen .database-category {
-  width: auto;
-  min-width: 104px;
-  min-height: 34px;
-  height: 34px;
-  padding: 2px 24px 2px 8px;
-  font-size: 0.78rem;
-}
-/* Two-state pills (favourite, shared) sized to match the delete button
-   beside them so the row's controls line up. */
-.pack-screen .toggle-pill {
-  flex: none;
-  width: 32px;
-  height: 34px;
-  min-height: 0;
-  padding: 0;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--surface-raised);
-  color: var(--muted);
-  font-size: 0.9rem;
-  line-height: 1;
-  cursor: pointer;
-}
-.pack-screen .toggle-pill.is-on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
-/* Favourite reads as gold when on, matching the picker's star. */
-.pack-screen .toggle-pill.is-on[data-toggle-fav-db] { color: #f59e0b; border-color: #f59e0b; }
-.pack-screen .database-row .delete-btn { width: 32px; height: 34px; }
-
 /* Trip-length shortcuts on each item row - deliberately smaller and flatter
    than the +/- buttons so they read as secondary shortcuts, not the primary
    way to change a quantity. */
@@ -806,10 +689,6 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   .pack-screen .database-row { flex-wrap: wrap; }
   .pack-screen .database-name { flex: 1 0 100%; }
 
-  .pack-screen #pack-picker-add-form { flex-wrap: wrap; }
-  .pack-screen .db-filter-wrap #pack-picker-filter-input { flex: 1 0 100%; }
-  .pack-screen .db-filter-wrap #pack-picker-category-input { flex: 1; min-width: 0; }
-  .pack-screen #pack-picker-add-form .icon-btn { flex: none; }
 }
 
 @media (max-width: 420px) {
