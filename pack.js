@@ -133,6 +133,7 @@
 
     el.itemCategory.innerHTML = optionsHtml(CATEGORIES);
     el.pickerCategoryInput.innerHTML = optionsHtml(CATEGORIES);
+    el.databaseCategoryInput.innerHTML = optionsHtml(CATEGORIES);
 
     categoryManuallySet = false;
     await refreshCurrentUser();
@@ -326,6 +327,7 @@
             <button id="pack-list-options-btn" class="icon-btn cog-btn" type="button" aria-label="List options" aria-haspopup="true" aria-expanded="false">⚙</button>
             <div id="pack-list-options-menu" class="list-options-menu" hidden>
               <button id="pack-add-items-btn" class="icon-btn" type="button">🐳🪄 Add Items</button>
+              <button id="pack-database-btn" class="icon-btn" type="button">Item Database</button>
               <button id="pack-remove-all-btn" class="icon-btn danger-btn" type="button">Remove All Items</button>
             </div>
           </div>
@@ -422,6 +424,38 @@
         </div>
       </div>
 
+      <div id="pack-database-modal" class="modal">
+        <div class="modal-content wide">
+          <div class="modal-header">
+            <h2>Item Database</h2>
+            <button id="pack-close-database-btn" class="icon-btn" type="button">✕</button>
+          </div>
+          <p class="muted-line">Every item available to add, across the household. Tap one to rename it or change its category.</p>
+          <input id="pack-database-filter-input" type="text" placeholder="Filter by name or category" autocomplete="off" />
+          <div id="pack-database-feedback" class="db-feedback" hidden>Updated</div>
+          <div id="pack-database-list"></div>
+
+          <div id="pack-database-edit-popup" class="meal-edit-popup" hidden>
+            <div class="meal-edit-popup-card">
+              <h3>Edit Item</h3>
+              <form id="pack-database-form" class="stack-form" autocomplete="off">
+                <label>Name
+                  <input id="pack-database-name-input" type="text" required />
+                </label>
+                <label>Category
+                  <select id="pack-database-category-input"></select>
+                </label>
+                <div class="db-actions">
+                  <button class="icon-btn primary-btn" type="submit">Save</button>
+                  <button id="pack-database-delete-btn" class="icon-btn danger-btn" type="button">Delete</button>
+                  <button id="pack-database-cancel-btn" class="icon-btn" type="button">Cancel</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div id="pack-check-toast" class="check-toast" hidden>
         <span id="pack-check-toast-text">Packed</span>
       </div>
@@ -468,6 +502,7 @@
     el.listOptionsMenu = q("pack-list-options-menu");
     el.removeAllBtn = q("pack-remove-all-btn");
     el.addItemsBtn = q("pack-add-items-btn");
+    el.databaseBtn = q("pack-database-btn");
     el.mineSections = q("pack-mine-sections");
     el.mineEmpty = q("pack-mine-empty");
     el.sharedSections = q("pack-shared-sections");
@@ -514,6 +549,18 @@
     el.pickerCategoryInput = q("pack-picker-category-input");
     el.pickerFeedback = q("pack-picker-feedback");
 
+    el.databaseModal = q("pack-database-modal");
+    el.closeDatabaseBtn = q("pack-close-database-btn");
+    el.databaseList = q("pack-database-list");
+    el.databaseFilterInput = q("pack-database-filter-input");
+    el.databaseFeedback = q("pack-database-feedback");
+    el.databaseEditPopup = q("pack-database-edit-popup");
+    el.databaseForm = q("pack-database-form");
+    el.databaseNameInput = q("pack-database-name-input");
+    el.databaseCategoryInput = q("pack-database-category-input");
+    el.databaseDeleteBtn = q("pack-database-delete-btn");
+    el.databaseCancelBtn = q("pack-database-cancel-btn");
+
     el.checkToast = q("pack-check-toast");
     el.checkToastText = q("pack-check-toast-text");
 
@@ -534,6 +581,7 @@
     el.listOptionsBtn.addEventListener("click", toggleListOptionsMenu);
     el.removeAllBtn.addEventListener("click", () => { closeListOptionsMenu(); removeAllItems(); });
     el.addItemsBtn.addEventListener("click", () => { closeListOptionsMenu(); openPicker(); });
+    el.databaseBtn.addEventListener("click", () => { closeListOptionsMenu(); openDatabase(); });
 
     el.mineSections.addEventListener("click", onItemListClick);
     el.mineSections.addEventListener("change", onItemListChange);
@@ -569,6 +617,13 @@
     el.pickerFilterInput.addEventListener("input", renderPicker);
     el.pickerList.addEventListener("click", onPickerListClick);
 
+    el.closeDatabaseBtn.addEventListener("click", () => closeModal(el.databaseModal));
+    el.databaseFilterInput.addEventListener("input", renderDatabase);
+    el.databaseList.addEventListener("click", onDatabaseListClick);
+    el.databaseForm.addEventListener("submit", onDatabaseFormSubmit);
+    el.databaseDeleteBtn.addEventListener("click", onDatabaseDeleteClick);
+    el.databaseCancelBtn.addEventListener("click", closeDatabaseEditor);
+
     el.closeConflictBtn.addEventListener("click", acknowledgeConflict);
     el.resolveConflictBtn.addEventListener("click", acknowledgeConflict);
 
@@ -584,6 +639,7 @@
 
     root.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
+      if (!el.databaseEditPopup.hidden) return closeDatabaseEditor();
       const open = root.querySelector(".modal.is-open");
       if (open) closeModal(open);
       else if (!el.listOptionsMenu.hidden) closeListOptionsMenu();
@@ -858,11 +914,14 @@
     const days = tripDays(currentTrip());
     if (!days) return "";
     const half = Math.max(1, Math.floor(days / 2));
-    return `
-      <button class="qty-preset-btn" type="button" data-qty-set="${item.id}" data-qty-value="${days}"
-        aria-label="Set quantity to ${days} (one per day)" title="One per day (${days})">${days}d</button>
-      <button class="qty-preset-btn" type="button" data-qty-set="${item.id}" data-qty-value="${half}"
-        aria-label="Set quantity to ${half} (one per two days)" title="One per two days (${half})">½</button>`;
+    // Label is the resulting quantity itself, not the rule that produced it -
+    // "10" says what you'll get; "10d" made you translate.
+    const preset = (value, title) =>
+      `<button class="qty-preset-btn" type="button" data-qty-set="${item.id}" data-qty-value="${value}"
+        aria-label="Set quantity to ${value} (${title})" title="${title} (${value})">${value}</button>`;
+    // Identical values would render as two buttons doing the same thing
+    // (a 1- or 2-day trip floors both to 1), so collapse to one.
+    return half === days ? preset(days, "one per day") : preset(days, "one per day") + preset(half, "one per two days");
   }
 
   function onItemListClick(e) {
@@ -1836,8 +1895,8 @@
     touch(std);
     await persistLocal();
     await enqueue(std, "standard_items");
-    renderPicker();
-    showPickerFeedback(`Deleted ${std.name}`);
+    if (!el.pickerModal.classList.contains("is-open")) showDatabaseFeedback(`Deleted ${std.name}`);
+    else { renderPicker(); showPickerFeedback(`Deleted ${std.name}`); }
     syncNow();
     return true;
   }
@@ -1847,6 +1906,132 @@
     el.pickerFeedback.hidden = false;
     clearTimeout(standardFeedbackTimer);
     standardFeedbackTimer = setTimeout(() => { el.pickerFeedback.hidden = true; }, 2000);
+  }
+
+  // ---------------------------------------------------------------------
+  // Item Database — the catalogue itself, separate from the Add Items
+  // picker. The picker is for "put this on my list"; this is for "fix the
+  // catalogue" (rename, recategorise, remove). Editing lives here rather
+  // than in the picker so a mis-tap while adding items can't silently
+  // rename something for the whole household.
+  // ---------------------------------------------------------------------
+
+  let editingDatabaseId = null;
+
+  function openDatabase() {
+    editingDatabaseId = null;
+    el.databaseEditPopup.hidden = true;
+    el.databaseFilterInput.value = "";
+    renderDatabase();
+    openModal(el.databaseModal);
+  }
+
+  function renderDatabase() {
+    const query = canonicalKey(el.databaseFilterInput.value);
+    const scrollTop = el.databaseModal.scrollTop;
+
+    const all = state.standardItems
+      .filter((s) => !s.deleted_at)
+      .filter((s) => !query || canonicalKey(s.name).includes(query) || canonicalKey(s.category).includes(query))
+      .sort((a, b) => a.name.localeCompare(b.name));
+
+    if (!state.standardItems.some((s) => !s.deleted_at)) {
+      el.databaseList.innerHTML = `<p class="empty-note">No items yet. Add some from Add Items.</p>`;
+      return;
+    }
+    if (!all.length) {
+      el.databaseList.innerHTML = `<p class="empty-note">Nothing matches that filter.</p>`;
+      return;
+    }
+
+    const groups = new Map();
+    for (const std of all) {
+      const key = CATEGORIES.includes(std.category) ? std.category : "Other";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(std);
+    }
+
+    el.databaseList.innerHTML = CATEGORIES.filter((c) => groups.has(c)).map((c) => `
+      <section class="card section-card">
+        <header class="section-head"><h3>${escapeHtml(c)}</h3><span class="section-count">${groups.get(c).length}</span></header>
+        <ul class="plain-list">
+          ${groups.get(c).map((std) => `
+            <li class="plain-row">
+              <button class="picker-main" type="button" data-edit-db="${std.id}">
+                <span class="picker-name">${escapeHtml(std.name)}</span>
+              </button>
+              <button class="delete-btn" type="button" data-delete-db="${std.id}" aria-label="Delete ${escapeHtml(std.name)}">✕</button>
+            </li>`).join("")}
+        </ul>
+      </section>`).join("");
+
+    // Same scroll-preservation reasoning as the old list: every row is
+    // replaced on re-render, which otherwise throws you back to the top
+    // after editing something halfway down.
+    el.databaseModal.scrollTop = scrollTop;
+    requestAnimationFrame(() => { el.databaseModal.scrollTop = scrollTop; });
+  }
+
+  function onDatabaseListClick(e) {
+    const edit = e.target.closest("[data-edit-db]");
+    if (edit) return openDatabaseEditor(edit.dataset.editDb);
+    const del = e.target.closest("[data-delete-db]");
+    if (del) return deleteStandardItem(del.dataset.deleteDb).then((ok) => { if (ok) renderDatabase(); });
+  }
+
+  function openDatabaseEditor(id) {
+    const std = state.standardItems.find((s) => s.id === id);
+    if (!std) return;
+    editingDatabaseId = id;
+    el.databaseNameInput.value = std.name;
+    el.databaseCategoryInput.value = CATEGORIES.includes(std.category) ? std.category : "Other";
+    el.databaseEditPopup.hidden = false;
+    el.databaseNameInput.focus();
+  }
+
+  function closeDatabaseEditor() {
+    editingDatabaseId = null;
+    el.databaseEditPopup.hidden = true;
+  }
+
+  async function onDatabaseFormSubmit(e) {
+    e.preventDefault();
+    const std = state.standardItems.find((s) => s.id === editingDatabaseId);
+    if (!std) return;
+    const name = normalizeName(el.databaseNameInput.value);
+    if (!name) return;
+
+    const duplicate = state.standardItems.find(
+      (s) => !s.deleted_at && s.id !== std.id && canonicalKey(s.name) === canonicalKey(name)
+    );
+    if (duplicate) return showDatabaseFeedback(`${name} already exists`);
+
+    std.name = name;
+    std.category = el.databaseCategoryInput.value || "Other";
+    touch(std);
+    await persistLocal();
+    await enqueue(std, "standard_items");
+    closeDatabaseEditor();
+    renderDatabase();
+    render();
+    showDatabaseFeedback(`Saved ${name}`);
+    syncNow();
+  }
+
+  async function onDatabaseDeleteClick() {
+    const id = editingDatabaseId;
+    if (!id) return;
+    const deleted = await deleteStandardItem(id);
+    if (!deleted) return;
+    closeDatabaseEditor();
+    renderDatabase();
+  }
+
+  function showDatabaseFeedback(message) {
+    el.databaseFeedback.textContent = message;
+    el.databaseFeedback.hidden = false;
+    clearTimeout(standardFeedbackTimer);
+    standardFeedbackTimer = setTimeout(() => { el.databaseFeedback.hidden = true; }, 2000);
   }
 
   // ---------------------------------------------------------------------

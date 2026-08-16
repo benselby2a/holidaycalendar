@@ -358,6 +358,8 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .qty-btn {
   width: 32px;
   height: 36px;
+  min-height: 0;
+  padding: 0;
   border: 1px solid var(--border);
   background: var(--surface-raised);
   color: var(--text);
@@ -657,14 +659,15 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
    way to change a quantity. */
 .pack-screen .qty-preset-btn {
   flex: none;
+  width: 32px;
   height: 36px;
   min-height: 0;
-  padding: 0 7px;
+  padding: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-raised);
   color: var(--brand);
-  font-size: 0.72rem;
+  font-size: 0.8rem;
   font-weight: 700;
   cursor: pointer;
 }
