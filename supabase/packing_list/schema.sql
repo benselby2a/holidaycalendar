@@ -17,7 +17,7 @@ grant usage on schema packing_list to authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- Trip meta: the packing-specific per-trip fields that don't belong on
--- holidaycalendar.holidays (season, trip type, notes). There's no
+-- holidaycalendar.holidays (just notes now). There's no
 -- "archived" concept here — holidaycalendar's own `status` field already
 -- covers a trip's lifecycle, and there's no separate packing-trips list to
 -- hide things from any more.
@@ -25,8 +25,6 @@ grant usage on schema packing_list to authenticated, service_role;
 create table if not exists packing_list.trip_meta (
   holiday_id bigint primary key,
   household_id text not null,
-  season text not null default 'Any',
-  trip_types text[] not null default '{}',
   notes text,
   deleted_at timestamptz,
   created_at timestamptz not null default now(),
@@ -127,44 +125,63 @@ create index if not exists packing_items_holiday_idx
 create index if not exists packing_items_traveller_idx
   on packing_list.packing_items(traveller_id);
 
--- Stops the wizard creating the same default twice for the same owner.
+-- Stops the favourites picker adding the same catalogue item twice for
+-- the same owner on one trip.
 create unique index if not exists packing_items_wizard_unique
   on packing_list.packing_items(holiday_id, standard_item_id, coalesce(traveller_id, '00000000-0000-0000-0000-000000000000'::uuid))
   where standard_item_id is not null and deleted_at is null;
 
 -- ---------------------------------------------------------------------------
--- Standard items: the configurable default library the wizard draws from.
---   quantity = base_qty + ceil(per_day * nights_or_days), capped by max_qty
---   applies_to = 'person' -> one personal item per selected traveller
---   applies_to = 'trip'   -> one shared item for the trip
---   seasons / trip_types: empty array or {Any} means "always applies"
+-- Standard items: the catalogue the favourites picker draws from. Just a
+-- name and a category - quantity is chosen per trip on the item row itself
+-- (+/- and the trip-length preset buttons), and relevance is expressed by
+-- each user favouriting what they personally want, via item_favourites.
 -- ---------------------------------------------------------------------------
 create table if not exists packing_list.standard_items (
   id uuid primary key default gen_random_uuid(),
   household_id text not null,
   name text not null,
   category text not null default 'Other',
-  applies_to text not null default 'person',
-  base_qty integer not null default 1,
-  per_day numeric not null default 0,
-  max_qty integer not null default 0,
-  seasons text[] not null default '{}',
-  trip_types text[] not null default '{}',
-  mandatory boolean not null default false,
-  enabled boolean not null default true,
   sort_order integer not null default 0,
   deleted_at timestamptz,
   created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now(),
-  constraint standard_items_applies_to_check check (applies_to in ('person', 'trip'))
+  updated_at timestamptz not null default now()
 );
 
 create unique index if not exists standard_items_unique_per_household
-  on packing_list.standard_items(household_id, lower(name), applies_to)
+  on packing_list.standard_items(household_id, lower(name))
   where deleted_at is null;
 
 create index if not exists standard_items_household_idx
   on packing_list.standard_items(household_id, category, sort_order);
+
+-- ---------------------------------------------------------------------------
+-- Per-user favourites over the catalogue above.
+--
+-- Its own table rather than a boolean on standard_items because
+-- standard_items is household-wide (shared between both accounts) - a column
+-- there would make one person's favourites everyone's.
+--
+-- user_id is the Supabase auth user id, NOT traveller_id: travellers are
+-- per-holiday rows, so a traveller id can't carry a favourite across trips.
+-- ---------------------------------------------------------------------------
+create table if not exists packing_list.item_favourites (
+  id uuid primary key default gen_random_uuid(),
+  household_id text not null,
+  standard_item_id uuid not null references packing_list.standard_items(id) on delete cascade,
+  user_id text not null,
+  deleted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by text
+);
+
+create unique index if not exists item_favourites_unique_active
+  on packing_list.item_favourites(standard_item_id, user_id)
+  where deleted_at is null;
+
+create index if not exists item_favourites_user_idx
+  on packing_list.item_favourites(household_id, user_id);
 
 -- ---------------------------------------------------------------------------
 -- Row level security
@@ -174,12 +191,13 @@ alter table packing_list.travellers enable row level security;
 alter table packing_list.trip_days enable row level security;
 alter table packing_list.packing_items enable row level security;
 alter table packing_list.standard_items enable row level security;
+alter table packing_list.item_favourites enable row level security;
 
 do $$
 declare
   t text;
 begin
-  foreach t in array array['trip_meta', 'travellers', 'trip_days', 'packing_items', 'standard_items'] loop
+  foreach t in array array['trip_meta', 'travellers', 'trip_days', 'packing_items', 'standard_items', 'item_favourites'] loop
     execute format('drop policy if exists "household read %1$s" on packing_list.%1$I', t);
     execute format(
       'create policy "household read %1$s" on packing_list.%1$I for select to authenticated using (household_id = ''shared-household'')',
@@ -205,86 +223,6 @@ exception
   when duplicate_object then null;
 end $$;
 
--- ---------------------------------------------------------------------------
--- Seed the default standard item library (idempotent).
--- Everything here is editable in the app under "Standard Items".
--- ---------------------------------------------------------------------------
-insert into packing_list.standard_items
-  (household_id, name, category, applies_to, base_qty, per_day, max_qty, seasons, trip_types, sort_order)
-values
-  -- Clothing, scaled by trip length
-  ('shared-household', 'Underwear',            'Clothing',   'person', 0, 1,    14, '{}',         '{}',                        10),
-  ('shared-household', 'Socks',                'Clothing',   'person', 0, 1,    14, '{}',         '{}',                        20),
-  ('shared-household', 'T-Shirts',             'Clothing',   'person', 0, 1,    10, '{}',         '{}',                        30),
-  ('shared-household', 'Trousers',             'Clothing',   'person', 0, 0.25,  4, '{}',         '{}',                        40),
-  ('shared-household', 'Jumper',               'Clothing',   'person', 1, 0,     2, '{Winter,Autumn,Spring}', '{}',            50),
-  ('shared-household', 'Shorts',               'Clothing',   'person', 0, 0.34,  4, '{Summer}',   '{}',                        60),
-  ('shared-household', 'Pyjamas',              'Clothing',   'person', 1, 0,     2, '{}',         '{}',                        70),
-  ('shared-household', 'Light Jacket',         'Clothing',   'person', 1, 0,     1, '{Spring,Autumn}', '{}',                   80),
-  ('shared-household', 'Winter Coat',          'Clothing',   'person', 1, 0,     1, '{Winter}',   '{}',                        90),
-  ('shared-household', 'Waterproof Jacket',    'Clothing',   'person', 1, 0,     1, '{}',         '{Hiking,Camping,Festival}', 100),
-  ('shared-household', 'Smart Outfit',         'Clothing',   'person', 1, 0,     2, '{}',         '{City Break,Business}',     110),
-
-  -- Footwear
-  ('shared-household', 'Trainers',             'Footwear',   'person', 1, 0,     1, '{}',         '{}',                        200),
-  ('shared-household', 'Flip Flops',           'Footwear',   'person', 1, 0,     1, '{Summer}',   '{Beach}',                   210),
-  ('shared-household', 'Walking Boots',        'Footwear',   'person', 1, 0,     1, '{}',         '{Hiking,Camping}',          220),
-  ('shared-household', 'Smart Shoes',          'Footwear',   'person', 1, 0,     1, '{}',         '{City Break,Business}',     230),
-
-  -- Summer / beach
-  ('shared-household', 'Swimwear',             'Beach',      'person', 2, 0,     2, '{Summer}',   '{}',                        300),
-  ('shared-household', 'Sunglasses',           'Beach',      'person', 1, 0,     1, '{Summer}',   '{}',                        310),
-  ('shared-household', 'Sun Hat',              'Beach',      'person', 1, 0,     1, '{Summer}',   '{Beach}',                   320),
-  ('shared-household', 'Beach Towel',          'Beach',      'person', 1, 0,     1, '{Summer}',   '{Beach}',                   330),
-  ('shared-household', 'Suncream',             'Beach',      'trip',   1, 0,     1, '{Summer}',   '{}',                        340),
-  ('shared-household', 'After Sun',            'Beach',      'trip',   1, 0,     1, '{Summer}',   '{Beach}',                   350),
-  ('shared-household', 'Snorkel Set',          'Beach',      'trip',   1, 0,     1, '{Summer}',   '{Beach}',                   360),
-
-  -- Winter / ski
-  ('shared-household', 'Thermals',             'Clothing',   'person', 0, 0.34,  3, '{Winter}',   '{Ski}',                     400),
-  ('shared-household', 'Gloves',               'Clothing',   'person', 1, 0,     1, '{Winter}',   '{}',                        410),
-  ('shared-household', 'Hat and Scarf',        'Clothing',   'person', 1, 0,     1, '{Winter}',   '{}',                        420),
-  ('shared-household', 'Ski Goggles',          'Sports',     'person', 1, 0,     1, '{}',         '{Ski}',                     430),
-  ('shared-household', 'Ski Jacket',           'Sports',     'person', 1, 0,     1, '{}',         '{Ski}',                     440),
-
-  -- Toiletries
-  ('shared-household', 'Toothbrush',           'Toiletries', 'person', 1, 0,     1, '{}',         '{}',                        500),
-  ('shared-household', 'Toothpaste',           'Toiletries', 'trip',   1, 0,     1, '{}',         '{}',                        510),
-  ('shared-household', 'Shampoo',              'Toiletries', 'trip',   1, 0,     1, '{}',         '{}',                        520),
-  ('shared-household', 'Shower Gel',           'Toiletries', 'trip',   1, 0,     1, '{}',         '{}',                        530),
-  ('shared-household', 'Deodorant',            'Toiletries', 'person', 1, 0,     1, '{}',         '{}',                        540),
-  ('shared-household', 'Razor',                'Toiletries', 'person', 1, 0,     1, '{}',         '{}',                        550),
-  ('shared-household', 'Hairbrush',            'Toiletries', 'person', 1, 0,     1, '{}',         '{}',                        560),
-
-  -- Health
-  ('shared-household', 'First Aid Kit',        'Health',     'trip',   1, 0,     1, '{}',         '{}',                        600),
-  ('shared-household', 'Paracetamol',          'Health',     'trip',   1, 0,     1, '{}',         '{}',                        610),
-  ('shared-household', 'Plasters',             'Health',     'trip',   1, 0,     1, '{}',         '{}',                        620),
-  ('shared-household', 'Insect Repellent',     'Health',     'trip',   1, 0,     1, '{Summer}',   '{}',                        630),
-  ('shared-household', 'Prescription Medication', 'Health',  'person', 1, 0,     1, '{}',         '{}',                        640),
-
-  -- Tech
-  ('shared-household', 'Phone Charger',        'Tech',       'person', 1, 0,     1, '{}',         '{}',                        700),
-  ('shared-household', 'Power Bank',           'Tech',       'person', 1, 0,     1, '{}',         '{}',                        710),
-  ('shared-household', 'Travel Adaptor',       'Tech',       'trip',   2, 0,     4, '{}',         '{}',                        720),
-  ('shared-household', 'Headphones',           'Tech',       'person', 1, 0,     1, '{}',         '{}',                        730),
-  ('shared-household', 'Camera',               'Tech',       'trip',   1, 0,     1, '{}',         '{}',                        740),
-
-  -- Documents
-  ('shared-household', 'Passport',             'Documents',  'person', 1, 0,     1, '{}',         '{}',                        800),
-  ('shared-household', 'Travel Insurance',     'Documents',  'trip',   1, 0,     1, '{}',         '{}',                        810),
-  ('shared-household', 'Boarding Passes',      'Documents',  'person', 1, 0,     1, '{}',         '{}',                        820),
-  ('shared-household', 'Driving Licence',      'Documents',  'person', 1, 0,     1, '{}',         '{Road Trip}',               830),
-  ('shared-household', 'Accommodation Details','Documents',  'trip',   1, 0,     1, '{}',         '{}',                        840),
-
-  -- Camping / festival
-  ('shared-household', 'Tent',                 'Other',      'trip',   1, 0,     1, '{}',         '{Camping,Festival}',        900),
-  ('shared-household', 'Sleeping Bag',         'Other',      'person', 1, 0,     1, '{}',         '{Camping,Festival}',        910),
-  ('shared-household', 'Torch',                'Other',      'trip',   1, 0,     2, '{}',         '{Camping,Festival,Hiking}', 920),
-  ('shared-household', 'Reusable Water Bottle','Other',      'person', 1, 0,     1, '{}',         '{}',                        930),
-  ('shared-household', 'Book',                 'Other',      'person', 1, 0,     2, '{}',         '{}',                        940),
-  ('shared-household', 'Snacks',               'Food and Drink', 'trip', 1, 0,    1, '{}',         '{Road Trip,Camping}',       950)
-on conflict do nothing;
 
 -- Nudge PostgREST to drop its cached schema so new tables/columns/policies
 -- are visible immediately, without waiting for its next automatic refresh.
