@@ -635,6 +635,23 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .scope-btn:disabled.is-active { opacity: 1; }
 .pack-screen #pack-scope-note { margin-top: 6px; }
 
+/* Sync failures were previously invisible - this is deliberately loud. */
+.pack-screen .sync-banner {
+  margin: 8px 12px 0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  background: var(--brand-soft);
+  color: var(--brand);
+  border: 1px solid transparent;
+}
+.pack-screen .sync-banner.is-hard {
+  background: transparent;
+  color: var(--danger);
+  border-color: var(--danger);
+}
+
 /* --------------------------------------------------- item database rows */
 /* Breathing room between the filter row and the first section card, which
    otherwise sat flush against it. */
