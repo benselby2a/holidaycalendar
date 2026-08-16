@@ -80,6 +80,10 @@
   let standardFeedbackTimer = null;
   let suggestionActiveIndex = -1;
   let categoryManuallySet = false;
+  // The add form's list choice. A two-button toggle rather than a select so
+  // it's legible without opening anything; "personal" is the default.
+  let addScope = "personal";
+  let addScopeLocked = false;
   // Bumped on every open() call; a stale continuation (e.g. this trip's
   // load is still in flight when the user backs out and opens a different
   // one) checks this before touching `el`/`state` so it can't write a
@@ -134,6 +138,7 @@
     el.itemCategory.innerHTML = optionsHtml(CATEGORIES);
 
     categoryManuallySet = false;
+    setAddScope("personal");
     await refreshCurrentUser();
     if (myToken !== openToken) return;
     await loadLocal(holidayId);
@@ -356,17 +361,18 @@
               <button id="pack-add-item-btn" class="add-submit-btn" type="submit">Add</button>
             </div>
             <div id="pack-item-options" class="item-options" hidden></div>
+            <div class="add-row add-primary-row">
+              <select id="pack-item-category" aria-label="Category"></select>
+              <div id="pack-item-scope" class="scope-toggle" role="group" aria-label="Which list">
+                <button type="button" class="scope-btn is-active" data-scope="personal">My list</button>
+                <button type="button" class="scope-btn" data-scope="shared">Shared</button>
+              </div>
+            </div>
+            <p id="pack-scope-note" class="muted-line" hidden>Marked shared in the Item Database.</p>
             <details class="add-more">
               <summary>More options</summary>
               <div class="add-row">
-                <select id="pack-item-category" aria-label="Category"></select>
                 <input id="pack-item-qty" type="number" inputmode="numeric" min="1" max="99" value="1" aria-label="Quantity" />
-              </div>
-              <div class="add-row">
-                <select id="pack-item-scope" aria-label="List">
-                  <option value="personal">My list</option>
-                  <option value="shared">Shared list</option>
-                </select>
                 <select id="pack-item-owner" aria-label="Owner"></select>
               </div>
             </details>
@@ -486,6 +492,7 @@
     el.itemCategory = q("pack-item-category");
     el.itemQty = q("pack-item-qty");
     el.itemScope = q("pack-item-scope");
+    el.scopeNote = q("pack-scope-note");
     el.itemOwner = q("pack-item-owner");
 
 
@@ -545,10 +552,16 @@
     el.addFabBtn.addEventListener("click", () => setAddPanelOpen(true));
     el.addForm.addEventListener("submit", onAddItemSubmit);
     el.itemName.addEventListener("input", renderNameSuggestions);
+    el.itemName.addEventListener("input", syncAddFormToName);
     el.itemName.addEventListener("keydown", onSuggestionKeyDown);
     el.itemOptions.addEventListener("click", onSuggestionClick);
     el.itemScope.addEventListener("change", updateOwnerSelectVisibility);
     el.itemCategory.addEventListener("change", () => { categoryManuallySet = true; });
+    el.itemScope.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-scope]");
+      if (!btn || addScopeLocked) return;
+      setAddScope(btn.dataset.scope);
+    });
 
     el.closeTravellersBtn.addEventListener("click", () => closeModal(el.travellersModal));
     el.travellerForm.addEventListener("submit", onTravellerFormSubmit);
@@ -1357,7 +1370,7 @@
     // canonical name so "socks" doesn't create a second "Socks". Resolved
     // before scope, because an existing entry's shared flag decides which
     // list this lands on.
-    const formScope = el.itemScope.value === "shared" ? "shared" : "personal";
+    const formScope = addScope;
     let std = state.standardItems.find((s) => !s.deleted_at && canonicalKey(s.name) === canonicalKey(name));
     if (!std) {
       std = {
@@ -1394,6 +1407,7 @@
       el.itemQty.value = "1";
       el.itemCategory.value = "Clothes";
       categoryManuallySet = false;
+      setAddScope("personal");
       render();
       setAddPanelOpen(false);
       showToast(`${name} × ${existing.quantity}`);
@@ -1416,6 +1430,7 @@
     el.itemQty.value = "1";
     el.itemCategory.value = "Clothes";
     categoryManuallySet = false;
+    setAddScope("personal");
     render();
     setAddPanelOpen(false);
     showToast(`Added ${name}`);
@@ -1529,6 +1544,38 @@
   // ---------------------------------------------------------------------
   // Name suggestions
   // ---------------------------------------------------------------------
+
+  function setAddScope(scope, locked = false) {
+    addScope = scope === "shared" ? "shared" : "personal";
+    addScopeLocked = locked;
+    el.itemScope.querySelectorAll("[data-scope]").forEach((btn) => {
+      btn.classList.toggle("is-active", btn.dataset.scope === addScope);
+      btn.disabled = locked;
+    });
+    el.scopeNote.hidden = !locked;
+  }
+
+  // Now that category and list are visible by default they have to tell the
+  // truth before you hit Add, not just at submit time: mirror the guessed
+  // category as you type, and — since an existing catalogue entry's shared
+  // flag overrides the toggle — show and lock the list when the name matches
+  // something already marked shared.
+  function syncAddFormToName() {
+    const name = normalizeName(el.itemName.value);
+    const std = name
+      ? state.standardItems.find((s) => !s.deleted_at && canonicalKey(s.name) === canonicalKey(name))
+      : null;
+
+    if (std && !categoryManuallySet) {
+      el.itemCategory.value = CATEGORIES.includes(std.category) ? std.category : "Other";
+    } else if (!categoryManuallySet && name) {
+      const guess = guessCategory(name);
+      if (guess) el.itemCategory.value = guess;
+    }
+
+    if (std && std.shared) setAddScope("shared", true);
+    else if (addScopeLocked) setAddScope("personal", false);
+  }
 
   function renderNameSuggestions() {
     const query = canonicalKey(el.itemName.value);
