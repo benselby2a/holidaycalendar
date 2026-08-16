@@ -424,6 +424,26 @@
         </div>
       </div>
 
+      <div id="pack-rename-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>Rename Item</h2>
+            <button id="pack-close-rename-btn" class="icon-btn" type="button">✕</button>
+          </div>
+          <form id="pack-rename-form" class="stack-form" autocomplete="off">
+            <label>Name
+              <input id="pack-rename-input" type="text" required autocomplete="off" />
+            </label>
+            <p class="muted-line">Also renames this item wherever it appears on this trip's lists.</p>
+            <div id="pack-rename-error" class="db-feedback" hidden></div>
+            <div class="db-actions">
+              <button class="icon-btn primary-btn" type="submit">Save</button>
+              <button id="pack-rename-cancel-btn" class="icon-btn" type="button">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <div id="pack-check-toast" class="check-toast" hidden>
         <span id="pack-check-toast-text">Packed</span>
       </div>
@@ -516,6 +536,13 @@
     el.databaseFilterInput = q("pack-database-filter-input");
     el.databaseFeedback = q("pack-database-feedback");
 
+    el.renameModal = q("pack-rename-modal");
+    el.closeRenameBtn = q("pack-close-rename-btn");
+    el.renameForm = q("pack-rename-form");
+    el.renameInput = q("pack-rename-input");
+    el.renameError = q("pack-rename-error");
+    el.renameCancelBtn = q("pack-rename-cancel-btn");
+
     el.checkToast = q("pack-check-toast");
     el.checkToastText = q("pack-check-toast-text");
 
@@ -555,7 +582,6 @@
     el.itemName.addEventListener("input", syncAddFormToName);
     el.itemName.addEventListener("keydown", onSuggestionKeyDown);
     el.itemOptions.addEventListener("click", onSuggestionClick);
-    el.itemScope.addEventListener("change", updateOwnerSelectVisibility);
     el.itemCategory.addEventListener("change", () => { categoryManuallySet = true; });
     el.itemScope.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-scope]");
@@ -578,6 +604,10 @@
     el.databaseFilterInput.addEventListener("input", renderDatabase);
     el.databaseList.addEventListener("click", onDatabaseListClick);
     el.databaseList.addEventListener("change", onDatabaseListChange);
+
+    el.closeRenameBtn.addEventListener("click", () => closeModal(el.renameModal));
+    el.renameCancelBtn.addEventListener("click", () => closeModal(el.renameModal));
+    el.renameForm.addEventListener("submit", onRenameSubmit);
 
     el.closeConflictBtn.addEventListener("click", acknowledgeConflict);
     el.resolveConflictBtn.addEventListener("click", acknowledgeConflict);
@@ -707,14 +737,16 @@
 
   function renderOwnerSelect() {
     const people = tripTravellers(state.holiday.id);
+    // Whoever is adding it is the obvious person to be responsible for it,
+    // so default to them rather than Unassigned.
     el.itemOwner.innerHTML =
       `<option value="">Unassigned</option>` +
-      people.map((t) => `<option value="${t.id}">${escapeHtml(t.name)}</option>`).join("");
+      people.map((t) => `<option value="${t.id}"${t.id === state.whoami ? " selected" : ""}>${escapeHtml(t.name)}</option>`).join("");
     updateOwnerSelectVisibility();
   }
 
   function updateOwnerSelectVisibility() {
-    el.itemOwner.hidden = el.itemScope.value !== "shared";
+    el.itemOwner.hidden = addScope !== "shared";
   }
 
   // The catalogue is the source of truth for whether something is shared.
@@ -873,6 +905,7 @@
                  <button class="qty-btn" type="button" data-qty-down="${item.id}" aria-label="Decrease quantity">−</button>
                  <button class="qty-btn" type="button" data-qty-up="${item.id}" aria-label="Increase quantity">+</button>
                  ${qtyPresetButtonsHtml(item)}
+                 ${sharedToggleHtml(item)}
                  <button class="delete-btn" type="button" data-delete-item="${item.id}" aria-label="Delete item">✕</button>
                </div>`
         }
@@ -883,6 +916,38 @@
   // length. Set the quantity outright rather than incrementing - these are
   // shorthand for a final answer, not a nudge. Hidden entirely when the
   // trip has no dates, since there'd be no number to apply.
+  // Flip an item between your own list and the trip's shared list without
+  // going through the Item Database.
+  function sharedToggleHtml(item) {
+    const shared = isShared(item);
+    return `<button class="qty-btn shared-toggle-btn${shared ? " is-on" : ""}" type="button"
+      data-toggle-item-shared="${item.id}" aria-pressed="${shared}"
+      title="${shared ? "Shared for the trip — tap to make it yours" : "On your own list — tap to share"}">${shared ? "👥" : "👤"}</button>`;
+  }
+
+  async function toggleItemShared(itemId) {
+    const item = state.items.find((i) => i.id === itemId);
+    if (!item) return;
+
+    // Linked items take their shared state from the catalogue, so flip it
+    // there and let the existing move/de-dupe logic handle the lists.
+    if (item.standard_item_id) {
+      const std = state.standardItems.find((s) => s.id === item.standard_item_id && !s.deleted_at);
+      if (std) return toggleStandardShared(std.id, { assignTo: state.whoami });
+    }
+
+    // Older items with no catalogue link carry their own scope.
+    const nowShared = !isShared(item);
+    item.scope = nowShared ? "shared" : "personal";
+    item.traveller_id = state.whoami;
+    touch(item);
+    await persistLocal();
+    await enqueue(item, "packing_items");
+    render();
+    showToast(`${item.name} → ${nowShared ? "shared" : "your list"}`);
+    syncNow();
+  }
+
   function qtyPresetButtonsHtml(item) {
     const days = tripDays(currentTrip());
     if (!days) return "";
@@ -900,6 +965,8 @@
   function onItemListClick(e) {
     const toggle = e.target.closest("[data-toggle-item]");
     if (toggle) return togglePacked(toggle.dataset.toggleItem);
+    const sharedBtn = e.target.closest("[data-toggle-item-shared]");
+    if (sharedBtn) return toggleItemShared(sharedBtn.dataset.toggleItemShared);
     const preset = e.target.closest("[data-qty-set]");
     if (preset) return setQuantity(preset.dataset.qtySet, Number(preset.dataset.qtyValue));
     const up = e.target.closest("[data-qty-up]");
@@ -1393,7 +1460,10 @@
     // quietly put a second personal copy on your list. For a brand-new
     // entry there's nothing to defer to, so the selector stands.
     const scope = std.shared ? "shared" : formScope;
-    const travellerId = scope === "shared" ? (std.shared ? null : el.itemOwner.value || null) : state.whoami;
+    // A shared item still needs someone on the hook for packing it, and the
+    // person adding it is the sensible default - it also keeps the item
+    // visible on their own list rather than only under the Shared tab.
+    const travellerId = scope === "shared" ? (el.itemOwner.value || state.whoami) : state.whoami;
     if (scope === "personal" && !travellerId) return showToast("Add a traveller first");
 
     // packing_items_wizard_unique forbids the same catalogue item twice for
@@ -1402,7 +1472,9 @@
     // quantity instead of inserting a duplicate that would 409 on sync.
     const existing = state.items.find((i) =>
       !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id === std.id &&
-      (i.traveller_id || null) === (travellerId || null));
+      // A shared item is the trip's single copy, so any existing one counts
+      // no matter who's down as responsible. Personal items are per person.
+      (scope === "shared" ? isShared(i) : (i.traveller_id || null) === (travellerId || null)));
     if (existing) {
       existing.quantity = clampInt(existing.quantity + quantity, 1, 99, 1);
       touch(existing);
@@ -1558,6 +1630,7 @@
       btn.disabled = locked;
     });
     el.scopeNote.hidden = !locked;
+    if (el.itemOwner) updateOwnerSelectVisibility();
   }
 
   // Now that category and list are visible by default they have to tell the
@@ -1770,7 +1843,7 @@
       .filter((std) => !already.has(std.id) && !already.has(`name:${canonicalKey(std.name)}`));
 
     if (!missing.length) return showToast("All your favourites are already on the list");
-    if (missing.some((std) => !std.shared) && !state.whoami) return showToast("Add a traveller first");
+    if (!state.whoami) return showToast("Add a traveller first");
 
     const created = [];
     for (const std of missing) {
@@ -1778,7 +1851,8 @@
         id: crypto.randomUUID(), holiday_id: trip.id, household_id: APP_CONFIG.householdId,
         name: std.name, category: std.category, quantity: 1,
         scope: std.shared ? "shared" : "personal",
-        traveller_id: std.shared ? null : state.whoami,
+        // Shared or not, you're the one adding it, so you're responsible.
+        traveller_id: state.whoami,
         packed: false, packed_at: null, notes: null, source: "favourites", standard_item_id: std.id, sort_order: 0,
         deleted_at: null, updated_at: new Date().toISOString(), updated_by: currentUserId
       };
@@ -1947,6 +2021,7 @@
           <select class="database-category" data-category-for="${std.id}" aria-label="Category for ${escapeHtml(std.name)}">
             ${CATEGORIES.map((c) => `<option value="${escapeHtml(c)}"${c === std.category ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}
           </select>
+          <button class="toggle-pill" type="button" data-rename-db="${std.id}" title="Rename ${escapeHtml(std.name)}" aria-label="Rename ${escapeHtml(std.name)}">✏️</button>
           <button class="toggle-pill${isFavourite ? " is-on" : ""}" type="button" data-toggle-fav-db="${std.id}"
             aria-pressed="${isFavourite}" title="${isFavourite ? "Remove from" : "Add to"} your favourites">${isFavourite ? "★" : "☆"}</button>
           <button class="toggle-pill${shared ? " is-on" : ""}" type="button" data-toggle-shared="${std.id}"
@@ -1956,7 +2031,7 @@
       </li>`;
   }
 
-  async function toggleStandardShared(id) {
+  async function toggleStandardShared(id, { assignTo = null } = {}) {
     const std = state.standardItems.find((s) => s.id === id);
     if (!std) return;
     std.shared = !std.shared;
@@ -1978,7 +2053,11 @@
       const [keep, ...surplus] = existing;
       if (keep) {
         keep.scope = "shared";
-        keep.traveller_id = null;
+        // Toggled from someone's own list, they stay down as responsible so
+        // the item keeps its place there (tagged Shared) instead of silently
+        // vanishing to the Shared tab. From the Item Database there's no such
+        // context, so it goes unassigned.
+        keep.traveller_id = assignTo;
         touch(keep);
         await enqueue(keep, "packing_items");
       }
@@ -2016,6 +2095,8 @@
   }
 
   function onDatabaseListClick(e) {
+    const rename = e.target.closest("[data-rename-db]");
+    if (rename) return openRenameModal(rename.dataset.renameDb);
     const fav = e.target.closest("[data-toggle-fav-db]");
     if (fav) return toggleFavourite(fav.dataset.toggleFavDb).then(renderDatabase);
     const sharedBtn = e.target.closest("[data-toggle-shared]");
@@ -2027,6 +2108,61 @@
   function onDatabaseListChange(e) {
     const sel = e.target.closest("[data-category-for]");
     if (sel) setStandardCategory(sel.dataset.categoryFor, sel.value);
+  }
+
+  let renamingId = null;
+
+  function openRenameModal(id) {
+    const std = state.standardItems.find((s) => s.id === id);
+    if (!std) return;
+    renamingId = id;
+    el.renameInput.value = std.name;
+    el.renameError.hidden = true;
+    openModal(el.renameModal);
+    el.renameInput.focus();
+    el.renameInput.select();
+  }
+
+  async function onRenameSubmit(e) {
+    e.preventDefault();
+    const std = state.standardItems.find((s) => s.id === renamingId);
+    if (!std) return;
+    const name = normalizeName(el.renameInput.value);
+    if (!name || name === std.name) return closeModal(el.renameModal);
+
+    // standard_items_unique_per_household is on lower(name), so a clashing
+    // rename would 409 on sync rather than failing here.
+    const clash = state.standardItems.find(
+      (s) => !s.deleted_at && s.id !== std.id && canonicalKey(s.name) === canonicalKey(name)
+    );
+    if (clash) {
+      el.renameError.textContent = `"${clash.name}" already exists`;
+      el.renameError.hidden = false;
+      return;
+    }
+
+    const previous = std.name;
+    std.name = name;
+    touch(std);
+    await enqueue(std, "standard_items");
+
+    // packing_items store the name denormalised, so without this the rename
+    // would appear to do nothing on the lists that actually matter. Only
+    // this trip's items are loaded, so older trips keep the name they were
+    // packed under - which is arguably right: they record what you took.
+    for (const item of state.items) {
+      if (item.deleted_at || item.standard_item_id !== std.id) continue;
+      item.name = name;
+      touch(item);
+      await enqueue(item, "packing_items");
+    }
+
+    await persistLocal();
+    closeModal(el.renameModal);
+    renderDatabase();
+    render();
+    showDatabaseFeedback(`${previous} → ${name}`);
+    syncNow();
   }
 
   function showDatabaseFeedback(message) {
