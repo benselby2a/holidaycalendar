@@ -2267,10 +2267,17 @@
     await persistLocal();
   }
 
+  // touch() stamps updated_by on any row carrying a household_id, but these
+  // two tables have no such column - and PostgREST rejects the entire write
+  // when a payload names a column that doesn't exist, so a single stray key
+  // would 400 every catalogue edit. Strip it at the serialisation boundary
+  // rather than making touch() know about tables.
+  const TABLES_WITHOUT_UPDATED_BY = new Set(["standard_items", "travellers"]);
+
   function stripLocalFields(row, table) {
     const payload = { ...row };
     delete payload.created_at;
-    if (table === "packing_items") delete payload.updated_by;
+    if (table === "packing_items" || TABLES_WITHOUT_UPDATED_BY.has(table)) delete payload.updated_by;
     return payload;
   }
 
