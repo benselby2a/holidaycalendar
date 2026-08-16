@@ -654,6 +654,38 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .db-filter-wrap #pack-picker-category-input { flex: none; width: auto; min-width: 116px; }
 .pack-screen .db-filter-wrap .icon-btn { flex: none; }
 
+/* --------------------------------------------------- item database rows */
+.pack-screen .database-row { gap: 8px; }
+.pack-screen .database-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pack-screen .database-category {
+  width: auto;
+  min-width: 104px;
+  min-height: 34px;
+  height: 34px;
+  padding: 2px 24px 2px 8px;
+  font-size: 0.78rem;
+}
+/* Two-state pills (favourite, shared) sized to match the delete button
+   beside them so the row's controls line up. */
+.pack-screen .toggle-pill {
+  flex: none;
+  width: 32px;
+  height: 34px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.pack-screen .toggle-pill.is-on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+/* Favourite reads as gold when on, matching the picker's star. */
+.pack-screen .toggle-pill.is-on[data-toggle-fav-db] { color: #f59e0b; border-color: #f59e0b; }
+.pack-screen .database-row .delete-btn { width: 32px; height: 34px; }
+
 /* Trip-length shortcuts on each item row - deliberately smaller and flatter
    than the +/- buttons so they read as secondary shortcuts, not the primary
    way to change a quantity. */
@@ -737,6 +769,9 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
    give the input its own full-width row and let the other two share the
    next one. */
 @media (max-width: 560px) {
+  .pack-screen .database-row { flex-wrap: wrap; }
+  .pack-screen .database-name { flex: 1 0 100%; }
+
   .pack-screen #pack-picker-add-form { flex-wrap: wrap; }
   .pack-screen .db-filter-wrap #pack-picker-filter-input { flex: 1 0 100%; }
   .pack-screen .db-filter-wrap #pack-picker-category-input { flex: 1; min-width: 0; }

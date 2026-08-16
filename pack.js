@@ -133,7 +133,6 @@
 
     el.itemCategory.innerHTML = optionsHtml(CATEGORIES);
     el.pickerCategoryInput.innerHTML = optionsHtml(CATEGORIES);
-    el.databaseCategoryInput.innerHTML = optionsHtml(CATEGORIES);
 
     categoryManuallySet = false;
     await refreshCurrentUser();
@@ -430,29 +429,11 @@
             <h2>Item Database</h2>
             <button id="pack-close-database-btn" class="icon-btn" type="button">✕</button>
           </div>
-          <p class="muted-line">Every item available to add, across the household. Tap one to rename it or change its category.</p>
+          <p class="muted-line">Every item available to add, across the household. Star your favourites, set a category, or mark an item as shared for the whole trip.</p>
           <input id="pack-database-filter-input" type="text" placeholder="Filter by name or category" autocomplete="off" />
           <div id="pack-database-feedback" class="db-feedback" hidden>Updated</div>
           <div id="pack-database-list"></div>
 
-          <div id="pack-database-edit-popup" class="meal-edit-popup" hidden>
-            <div class="meal-edit-popup-card">
-              <h3>Edit Item</h3>
-              <form id="pack-database-form" class="stack-form" autocomplete="off">
-                <label>Name
-                  <input id="pack-database-name-input" type="text" required />
-                </label>
-                <label>Category
-                  <select id="pack-database-category-input"></select>
-                </label>
-                <div class="db-actions">
-                  <button class="icon-btn primary-btn" type="submit">Save</button>
-                  <button id="pack-database-delete-btn" class="icon-btn danger-btn" type="button">Delete</button>
-                  <button id="pack-database-cancel-btn" class="icon-btn" type="button">Cancel</button>
-                </div>
-              </form>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -554,12 +535,6 @@
     el.databaseList = q("pack-database-list");
     el.databaseFilterInput = q("pack-database-filter-input");
     el.databaseFeedback = q("pack-database-feedback");
-    el.databaseEditPopup = q("pack-database-edit-popup");
-    el.databaseForm = q("pack-database-form");
-    el.databaseNameInput = q("pack-database-name-input");
-    el.databaseCategoryInput = q("pack-database-category-input");
-    el.databaseDeleteBtn = q("pack-database-delete-btn");
-    el.databaseCancelBtn = q("pack-database-cancel-btn");
 
     el.checkToast = q("pack-check-toast");
     el.checkToastText = q("pack-check-toast-text");
@@ -620,9 +595,7 @@
     el.closeDatabaseBtn.addEventListener("click", () => closeModal(el.databaseModal));
     el.databaseFilterInput.addEventListener("input", renderDatabase);
     el.databaseList.addEventListener("click", onDatabaseListClick);
-    el.databaseForm.addEventListener("submit", onDatabaseFormSubmit);
-    el.databaseDeleteBtn.addEventListener("click", onDatabaseDeleteClick);
-    el.databaseCancelBtn.addEventListener("click", closeDatabaseEditor);
+    el.databaseList.addEventListener("change", onDatabaseListChange);
 
     el.closeConflictBtn.addEventListener("click", acknowledgeConflict);
     el.resolveConflictBtn.addEventListener("click", acknowledgeConflict);
@@ -639,7 +612,6 @@
 
     root.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
-      if (!el.databaseEditPopup.hidden) return closeDatabaseEditor();
       const open = root.querySelector(".modal.is-open");
       if (open) closeModal(open);
       else if (!el.listOptionsMenu.hidden) closeListOptionsMenu();
@@ -1720,7 +1692,10 @@
     if (!trip) return new Set();
     return new Set(
       state.items
-        .filter((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id && i.traveller_id === state.whoami)
+        .filter((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id)
+        // A shared item is on the trip once for everyone; a personal one
+        // only counts as "added" if it's on *my* list.
+        .filter((i) => (i.scope === "shared" ? true : i.traveller_id === state.whoami))
         .map((i) => i.standard_item_id)
     );
   }
@@ -1830,11 +1805,15 @@
     const trip = currentTrip();
     const std = state.standardItems.find((s) => s.id === standardItemId);
     if (!trip || !std) return;
-    if (!state.whoami) return showPickerFeedback("No traveller to add to");
+    if (!std.shared && !state.whoami) return showPickerFeedback("No traveller to add to");
 
     const item = {
       id: crypto.randomUUID(), holiday_id: trip.id, household_id: APP_CONFIG.householdId,
-      name: std.name, category: std.category, quantity: 1, scope: "personal", traveller_id: state.whoami,
+      name: std.name, category: std.category, quantity: 1,
+      scope: std.shared ? "shared" : "personal",
+      // Shared items belong to the trip, not a person - traveller_id on a
+      // shared row means "who's responsible for packing it", left unset here.
+      traveller_id: std.shared ? null : state.whoami,
       packed: false, packed_at: null, notes: null, source: "picker", standard_item_id: std.id, sort_order: 0,
       deleted_at: null, updated_at: new Date().toISOString(), updated_by: currentUserId
     };
@@ -1868,6 +1847,7 @@
       household_id: APP_CONFIG.householdId,
       name,
       category: el.pickerCategoryInput.value || guessCategory(name) || "Other",
+      shared: false,
       sort_order: 0,
       deleted_at: null,
       updated_at: new Date().toISOString()
@@ -1916,11 +1896,7 @@
   // rename something for the whole household.
   // ---------------------------------------------------------------------
 
-  let editingDatabaseId = null;
-
   function openDatabase() {
-    editingDatabaseId = null;
-    el.databaseEditPopup.hidden = true;
     el.databaseFilterInput.value = "";
     renderDatabase();
     openModal(el.databaseModal);
@@ -1929,6 +1905,7 @@
   function renderDatabase() {
     const query = canonicalKey(el.databaseFilterInput.value);
     const scrollTop = el.databaseModal.scrollTop;
+    const favIds = favouriteIdsForCurrentUser();
 
     const all = state.standardItems
       .filter((s) => !s.deleted_at)
@@ -1955,13 +1932,7 @@
       <section class="card section-card">
         <header class="section-head"><h3>${escapeHtml(c)}</h3><span class="section-count">${groups.get(c).length}</span></header>
         <ul class="plain-list">
-          ${groups.get(c).map((std) => `
-            <li class="plain-row">
-              <button class="picker-main" type="button" data-edit-db="${std.id}">
-                <span class="picker-name">${escapeHtml(std.name)}</span>
-              </button>
-              <button class="delete-btn" type="button" data-delete-db="${std.id}" aria-label="Delete ${escapeHtml(std.name)}">✕</button>
-            </li>`).join("")}
+          ${groups.get(c).map((std) => databaseRowHtml(std, favIds.has(std.id))).join("")}
         </ul>
       </section>`).join("");
 
@@ -1972,59 +1943,62 @@
     requestAnimationFrame(() => { el.databaseModal.scrollTop = scrollTop; });
   }
 
+  // Everything editable inline - no popup. Category is a live <select>,
+  // the star and the shared toggle are two-state buttons, and ✕ deletes.
+  function databaseRowHtml(std, isFavourite) {
+    const shared = Boolean(std.shared);
+    return `
+      <li class="plain-row database-row">
+        <span class="database-name">${escapeHtml(std.name)}</span>
+        <span class="row-actions">
+          <select class="database-category" data-category-for="${std.id}" aria-label="Category for ${escapeHtml(std.name)}">
+            ${CATEGORIES.map((c) => `<option value="${escapeHtml(c)}"${c === std.category ? " selected" : ""}>${escapeHtml(c)}</option>`).join("")}
+          </select>
+          <button class="toggle-pill${isFavourite ? " is-on" : ""}" type="button" data-toggle-fav-db="${std.id}"
+            aria-pressed="${isFavourite}" title="${isFavourite ? "Remove from" : "Add to"} your favourites">${isFavourite ? "★" : "☆"}</button>
+          <button class="toggle-pill${shared ? " is-on" : ""}" type="button" data-toggle-shared="${std.id}"
+            aria-pressed="${shared}" title="${shared ? "Adds to the Shared list" : "Adds to your own list"}">${shared ? "👥" : "👤"}</button>
+          <button class="delete-btn" type="button" data-delete-db="${std.id}" aria-label="Delete ${escapeHtml(std.name)}">✕</button>
+        </span>
+      </li>`;
+  }
+
+  async function toggleStandardShared(id) {
+    const std = state.standardItems.find((s) => s.id === id);
+    if (!std) return;
+    std.shared = !std.shared;
+    touch(std);
+    await persistLocal();
+    await enqueue(std, "standard_items");
+    renderDatabase();
+    showDatabaseFeedback(`${std.name} → ${std.shared ? "Shared list" : "personal list"}`);
+    syncNow();
+  }
+
+  async function setStandardCategory(id, category) {
+    const std = state.standardItems.find((s) => s.id === id);
+    if (!std || std.category === category) return;
+    std.category = CATEGORIES.includes(category) ? category : "Other";
+    touch(std);
+    await persistLocal();
+    await enqueue(std, "standard_items");
+    renderDatabase();
+    showDatabaseFeedback(`${std.name} → ${std.category}`);
+    syncNow();
+  }
+
   function onDatabaseListClick(e) {
-    const edit = e.target.closest("[data-edit-db]");
-    if (edit) return openDatabaseEditor(edit.dataset.editDb);
+    const fav = e.target.closest("[data-toggle-fav-db]");
+    if (fav) return toggleFavourite(fav.dataset.toggleFavDb).then(renderDatabase);
+    const sharedBtn = e.target.closest("[data-toggle-shared]");
+    if (sharedBtn) return toggleStandardShared(sharedBtn.dataset.toggleShared);
     const del = e.target.closest("[data-delete-db]");
     if (del) return deleteStandardItem(del.dataset.deleteDb).then((ok) => { if (ok) renderDatabase(); });
   }
 
-  function openDatabaseEditor(id) {
-    const std = state.standardItems.find((s) => s.id === id);
-    if (!std) return;
-    editingDatabaseId = id;
-    el.databaseNameInput.value = std.name;
-    el.databaseCategoryInput.value = CATEGORIES.includes(std.category) ? std.category : "Other";
-    el.databaseEditPopup.hidden = false;
-    el.databaseNameInput.focus();
-  }
-
-  function closeDatabaseEditor() {
-    editingDatabaseId = null;
-    el.databaseEditPopup.hidden = true;
-  }
-
-  async function onDatabaseFormSubmit(e) {
-    e.preventDefault();
-    const std = state.standardItems.find((s) => s.id === editingDatabaseId);
-    if (!std) return;
-    const name = normalizeName(el.databaseNameInput.value);
-    if (!name) return;
-
-    const duplicate = state.standardItems.find(
-      (s) => !s.deleted_at && s.id !== std.id && canonicalKey(s.name) === canonicalKey(name)
-    );
-    if (duplicate) return showDatabaseFeedback(`${name} already exists`);
-
-    std.name = name;
-    std.category = el.databaseCategoryInput.value || "Other";
-    touch(std);
-    await persistLocal();
-    await enqueue(std, "standard_items");
-    closeDatabaseEditor();
-    renderDatabase();
-    render();
-    showDatabaseFeedback(`Saved ${name}`);
-    syncNow();
-  }
-
-  async function onDatabaseDeleteClick() {
-    const id = editingDatabaseId;
-    if (!id) return;
-    const deleted = await deleteStandardItem(id);
-    if (!deleted) return;
-    closeDatabaseEditor();
-    renderDatabase();
+  function onDatabaseListChange(e) {
+    const sel = e.target.closest("[data-category-for]");
+    if (sel) setStandardCategory(sel.dataset.categoryFor, sel.value);
   }
 
   function showDatabaseFeedback(message) {
@@ -2134,7 +2108,14 @@
       apiSelect("trip_meta", { eq: { holiday_id: holidayId } })
     ]);
 
-    const error = travellers.error || tripDaysRes.error || items.error || standards.error || favourites.error || meta.error;
+    // item_favourites is the newest table here, so it's the one most likely
+    // to be missing on a project that hasn't run the migration yet. Its
+    // absence must NOT fail the whole pull: doing so meant deploying this
+    // code before running the migration silently stopped *every* table
+    // syncing, so locally cached rows (deleted server-side) never
+    // reconciled and kept reappearing. Degrade to "no favourites" instead.
+    if (favourites.error) console.warn("packing: item_favourites unavailable, continuing without favourites —", favourites.error.message);
+    const error = travellers.error || tripDaysRes.error || items.error || standards.error || meta.error;
     if (error) return { error };
 
     const pendingByTable = buildPendingPayloadMap();
@@ -2146,7 +2127,7 @@
     state.items = merged;
 
     state.standardItems = mergeById(state.standardItems, standards.data || [], pendingByTable.standard_items);
-    state.favourites = mergeById(state.favourites, favourites.data || [], pendingByTable.item_favourites);
+    if (!favourites.error) state.favourites = mergeById(state.favourites, favourites.data || [], pendingByTable.item_favourites);
 
     const remoteMeta = meta.data && meta.data[0];
     if (remoteMeta) {
