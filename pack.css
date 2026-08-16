@@ -654,6 +654,40 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .db-filter-wrap #pack-picker-category-input { flex: none; width: auto; min-width: 116px; }
 .pack-screen .db-filter-wrap .icon-btn { flex: none; }
 
+/* Breathing room between the search/filter row and the first section card,
+   which otherwise sat flush against it. */
+.pack-screen #pack-database-filter-input { margin-bottom: 4px; }
+.pack-screen #pack-database-list,
+.pack-screen #pack-picker-list { margin-top: 16px; }
+.pack-screen #pack-database-feedback + #pack-database-list,
+.pack-screen #pack-picker-feedback:not([hidden]) + #pack-picker-list { margin-top: 10px; }
+
+/* Section headers in both modals read as dividers, not just bold text:
+   uppercase, tracked out, brand-coloured, with a rule under them. */
+.pack-screen #pack-database-list .section-head,
+.pack-screen #pack-picker-list .section-head {
+  padding: 0 0 8px;
+  margin-bottom: 8px;
+  border-bottom: 2px solid var(--border);
+}
+.pack-screen #pack-database-list .section-head h3,
+.pack-screen #pack-picker-list .section-head h3 {
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--brand);
+}
+.pack-screen #pack-database-list .section-count,
+.pack-screen #pack-picker-list .section-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
 /* --------------------------------------------------- item database rows */
 .pack-screen .database-row { gap: 8px; }
 .pack-screen .database-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
