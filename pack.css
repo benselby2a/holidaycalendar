@@ -467,17 +467,6 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   cursor: pointer;
   flex: none;
 }
-.pack-screen .add-more { font-size: 0.82rem; }
-.pack-screen .add-more summary {
-  color: var(--muted);
-  font-weight: 600;
-  cursor: pointer;
-  padding: 4px 0;
-  list-style: none;
-}
-.pack-screen .add-more summary::-webkit-details-marker { display: none; }
-.pack-screen .add-more summary::before { content: "› "; }
-.pack-screen .add-more[open] summary::before { content: "⌄ "; }
 .pack-screen .item-options {
   position: absolute;
   bottom: calc(100% + 6px);

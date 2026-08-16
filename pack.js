@@ -369,13 +369,6 @@
               </div>
             </div>
             <p id="pack-scope-note" class="muted-line" hidden>Marked shared in the Item Database.</p>
-            <details class="add-more">
-              <summary>More options</summary>
-              <div class="add-row">
-                <input id="pack-item-qty" type="number" inputmode="numeric" min="1" max="99" value="1" aria-label="Quantity" />
-                <select id="pack-item-owner" aria-label="Owner"></select>
-              </div>
-            </details>
           </div>
         </form>
       </section>
@@ -510,10 +503,8 @@
     el.itemName = q("pack-item-entry");
     el.itemOptions = q("pack-item-options");
     el.itemCategory = q("pack-item-category");
-    el.itemQty = q("pack-item-qty");
     el.itemScope = q("pack-item-scope");
     el.scopeNote = q("pack-scope-note");
-    el.itemOwner = q("pack-item-owner");
 
 
     el.travellersModal = q("pack-travellers-modal");
@@ -668,7 +659,6 @@
     el.progressBar.style.width = `${pct}%`;
     el.progressText.textContent = `${packed}/${items.length} packed`;
 
-    renderOwnerSelect();
     applyTopTab();
     setTabButtons();
     renderMine();
@@ -734,20 +724,6 @@
     el.paneEveryone.hidden = state.tab !== "everyone";
   }
 
-
-  function renderOwnerSelect() {
-    const people = tripTravellers(state.holiday.id);
-    // Whoever is adding it is the obvious person to be responsible for it,
-    // so default to them rather than Unassigned.
-    el.itemOwner.innerHTML =
-      `<option value="">Unassigned</option>` +
-      people.map((t) => `<option value="${t.id}"${t.id === state.whoami ? " selected" : ""}>${escapeHtml(t.name)}</option>`).join("");
-    updateOwnerSelectVisibility();
-  }
-
-  function updateOwnerSelectVisibility() {
-    el.itemOwner.hidden = addScope !== "shared";
-  }
 
   // The catalogue is the source of truth for whether something is shared.
   // packing_items.scope is only a snapshot from when the item was added, so
@@ -1430,7 +1406,9 @@
     const name = normalizeName(el.itemName.value);
     if (!name) return;
 
-    const quantity = clampInt(el.itemQty.value, 1, 99, 1);
+    // Always 1 on add - the row's +/- and trip-length presets are how a
+    // quantity gets set, which is fewer taps than filling a field first.
+    const quantity = 1;
     // "More options" is collapsed by default, so most adds never touch the
     // category select — guess it from the name instead of silently taking
     // whatever the select's untouched first option happens to be. Once the
@@ -1463,7 +1441,9 @@
     // A shared item still needs someone on the hook for packing it, and the
     // person adding it is the sensible default - it also keeps the item
     // visible on their own list rather than only under the Shared tab.
-    const travellerId = scope === "shared" ? (el.itemOwner.value || state.whoami) : state.whoami;
+    // Shared or personal, the person adding it is responsible; reassigning
+    // a shared item is done from the Shared tab's owner dropdown.
+    const travellerId = state.whoami;
     if (scope === "personal" && !travellerId) return showToast("Add a traveller first");
 
     // packing_items_wizard_unique forbids the same catalogue item twice for
@@ -1481,7 +1461,6 @@
       await persistLocal();
       await enqueue(existing, "packing_items");
       el.itemName.value = "";
-      el.itemQty.value = "1";
       el.itemCategory.value = "Clothes";
       categoryManuallySet = false;
       setAddScope("personal");
@@ -1504,7 +1483,6 @@
     await enqueue(item, "packing_items");
 
     el.itemName.value = "";
-    el.itemQty.value = "1";
     el.itemCategory.value = "Clothes";
     categoryManuallySet = false;
     setAddScope("personal");
@@ -1630,7 +1608,6 @@
       btn.disabled = locked;
     });
     el.scopeNote.hidden = !locked;
-    if (el.itemOwner) updateOwnerSelectVisibility();
   }
 
   // Now that category and list are visible by default they have to tell the
