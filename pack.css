@@ -718,6 +718,11 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   background: rgb(245 158 11 / 0.14);
 }
 
+/* The per-item shared toggle sits in the same 32x36 box as the other row
+   buttons; the on-state matches the Item Database's shared pill. */
+.pack-screen .shared-toggle-btn { font-size: 0.82rem; }
+.pack-screen .shared-toggle-btn.is-on { border-color: var(--brand); background: var(--brand-soft); }
+
 /* Trip-length shortcuts on each item row - deliberately smaller and flatter
    than the +/- buttons so they read as secondary shortcuts, not the primary
    way to change a quantity. */
