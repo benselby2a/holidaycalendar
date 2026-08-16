@@ -603,6 +603,36 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .inline-form { display: flex; gap: 8px; margin-top: 12px; }
 .pack-screen .inline-form input { flex: 1; }
 
+/* The add form's category select and list toggle sit above the fold now,
+   so they read without opening "More options". */
+.pack-screen .add-primary-row { margin-top: 8px; }
+.pack-screen .add-primary-row > * { flex: 1; min-width: 0; }
+.pack-screen .scope-toggle {
+  display: flex;
+  gap: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--surface-raised);
+}
+.pack-screen .scope-btn {
+  flex: 1;
+  min-width: 0;
+  min-height: 40px;
+  padding: 0 8px;
+  border: none;
+  background: none;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.pack-screen .scope-btn.is-active { background: var(--brand); color: #fff; }
+.pack-screen .scope-btn:disabled { cursor: not-allowed; opacity: 0.75; }
+.pack-screen .scope-btn:disabled.is-active { opacity: 1; }
+.pack-screen #pack-scope-note { margin-top: 6px; }
+
 /* --------------------------------------------------- item database rows */
 /* Breathing room between the filter row and the first section card, which
    otherwise sat flush against it. */
