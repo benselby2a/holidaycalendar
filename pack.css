@@ -603,6 +603,71 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .inline-form { display: flex; gap: 8px; margin-top: 12px; }
 .pack-screen .inline-form input { flex: 1; }
 
+/* --------------------------------------------------- item database rows */
+/* Breathing room between the filter row and the first section card, which
+   otherwise sat flush against it. */
+.pack-screen #pack-database-filter-input { margin-bottom: 4px; }
+.pack-screen #pack-database-list { margin-top: 16px; }
+.pack-screen #pack-database-feedback:not([hidden]) + #pack-database-list { margin-top: 10px; }
+
+/* Section headers read as dividers, not just bold text: uppercase, tracked
+   out, brand-coloured, with a rule under them. Scoped to this list so the
+   packing list's own category cards keep their quieter styling. */
+.pack-screen #pack-database-list .section-head {
+  padding: 0 0 8px;
+  margin-bottom: 8px;
+  border-bottom: 2px solid var(--border);
+}
+.pack-screen #pack-database-list .section-head h3 {
+  font-size: 0.76rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--brand);
+}
+.pack-screen #pack-database-list .section-count {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+
+.pack-screen .database-row { gap: 8px; }
+.pack-screen .database-name { flex: 1; min-width: 0; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pack-screen .database-category {
+  width: auto;
+  min-width: 104px;
+  min-height: 34px;
+  height: 34px;
+  padding: 2px 24px 2px 8px;
+  font-size: 0.78rem;
+}
+/* The favourite pill, the shared pill and the delete button are one control
+   group - same box for all three so the row's right edge lines up. */
+.pack-screen .toggle-pill,
+.pack-screen .database-row .delete-btn {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  min-width: 34px;
+  min-height: 0;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+.pack-screen .toggle-pill {
+  background: var(--surface-raised);
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+.pack-screen .toggle-pill.is-on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
+/* Favourite reads as gold when on, distinct from the shared toggle. */
+.pack-screen .toggle-pill.is-on[data-toggle-fav-db] { color: #f59e0b; border-color: #f59e0b; }
+
 /* Trip-length shortcuts on each item row - deliberately smaller and flatter
    than the +/- buttons so they read as secondary shortcuts, not the primary
    way to change a quantity. */

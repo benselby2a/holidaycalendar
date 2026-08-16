@@ -704,15 +704,29 @@
     el.itemOwner.hidden = el.itemScope.value !== "shared";
   }
 
+  // The catalogue is the source of truth for whether something is shared.
+  // packing_items.scope is only a snapshot from when the item was added, so
+  // marking a catalogue entry shared afterwards - or having it marked on
+  // another device or another trip - would otherwise leave the item sitting
+  // on someone's personal list while the database says shared. Items with no
+  // catalogue link (older manual adds) fall back to their own scope.
+  function isShared(item) {
+    if (item.standard_item_id) {
+      const std = state.standardItems.find((s) => s.id === item.standard_item_id && !s.deleted_at);
+      if (std) return Boolean(std.shared);
+    }
+    return item.scope === "shared";
+  }
+
   function renderMine() {
-    const mine = tripItems(state.holiday.id).filter((i) => i.scope === "personal" && i.traveller_id === state.whoami);
+    const mine = tripItems(state.holiday.id).filter((i) => !isShared(i) && i.traveller_id === state.whoami);
     el.mineSections.innerHTML = groupedSectionsHtml(mine);
     el.mineEmpty.hidden = mine.length > 0;
   }
 
   function renderShared() {
     const people = tripTravellers(state.holiday.id);
-    const shared = tripItems(state.holiday.id).filter((i) => i.scope === "shared");
+    const shared = tripItems(state.holiday.id).filter(isShared);
 
     const filters = [{ id: "all", name: "All" }, ...people, { id: "unassigned", name: "Unassigned" }];
     el.sharedOwnerFilter.innerHTML = filters
@@ -748,7 +762,7 @@
 
     for (const person of people) {
       const own = items.filter(
-        (i) => (i.scope === "personal" && i.traveller_id === person.id) || (i.scope === "shared" && i.traveller_id === person.id)
+        (i) => i.traveller_id === person.id
       );
       const packed = own.filter((i) => i.packed).length;
       const pct = own.length ? Math.round((packed / own.length) * 100) : 0;
@@ -763,7 +777,7 @@
         </details>`);
     }
 
-    const unassigned = items.filter((i) => i.scope === "shared" && !i.traveller_id);
+    const unassigned = items.filter((i) => isShared(i) && !i.traveller_id);
     if (unassigned.length) {
       blocks.push(`
         <details class="person-block card" open>
@@ -822,7 +836,7 @@
       opts.showOwner && opts.compact
         ? `<span class="owner-tag">${escapeHtml(travellerName(item.traveller_id) || "Unassigned")}</span>`
         : "";
-    const sharedTag = item.scope === "shared" && !opts.showOwner ? `<span class="owner-tag">Shared</span>` : "";
+    const sharedTag = isShared(item) && !opts.showOwner ? `<span class="owner-tag">Shared</span>` : "";
 
     return `
       <li class="item-row${item.packed ? " is-packed" : ""}">
@@ -1635,7 +1649,7 @@
     const person = state.travellers.find((t) => t.id === btn.dataset.deleteTraveller);
     if (!person) return;
 
-    const personalItems = state.items.filter((i) => !i.deleted_at && i.scope === "personal" && i.traveller_id === person.id);
+    const personalItems = state.items.filter((i) => !i.deleted_at && !isShared(i) && i.traveller_id === person.id);
     const message = personalItems.length
       ? `Remove ${person.name}? Their ${personalItems.length} personal item(s) will be deleted and any shared items they own become unassigned.`
       : `Remove ${person.name}?`;
@@ -1650,7 +1664,7 @@
       touch(item);
       await enqueue(item, "packing_items");
     }
-    for (const item of state.items.filter((i) => !i.deleted_at && i.scope === "shared" && i.traveller_id === person.id)) {
+    for (const item of state.items.filter((i) => !i.deleted_at && isShared(i) && i.traveller_id === person.id)) {
       item.traveller_id = null;
       touch(item);
       await enqueue(item, "packing_items");
@@ -1745,7 +1759,7 @@
       if (i.deleted_at || i.holiday_id !== trip.id) continue;
       // A shared item is on the trip once for everyone; a personal one only
       // counts as "added" if it's on *my* list.
-      if (i.scope !== "shared" && i.traveller_id !== state.whoami) continue;
+      if (!isShared(i) && i.traveller_id !== state.whoami) continue;
       if (i.standard_item_id) keys.add(i.standard_item_id);
       keys.add(`name:${canonicalKey(i.name)}`);
     }
