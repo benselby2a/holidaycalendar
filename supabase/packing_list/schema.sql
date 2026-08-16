@@ -142,6 +142,9 @@ create table if not exists packing_list.standard_items (
   household_id text not null,
   name text not null,
   category text not null default 'Other',
+  -- true -> adding this from the picker puts it on the trip's Shared list
+  -- (one for everyone) rather than the adder's own personal list.
+  shared boolean not null default false,
   sort_order integer not null default 0,
   deleted_at timestamptz,
   created_at timestamptz not null default now(),
