@@ -925,6 +925,12 @@
   }
 
   function qtyPresetButtonsHtml(item) {
+    // Only Clothes scale with trip length - you want a pair of socks per day,
+    // but never ten tents. Matches on the same normalised category the
+    // section grouping uses, so the buttons appear exactly under the
+    // Clothes heading and nowhere else.
+    const category = CATEGORIES.includes(item.category) ? item.category : "Other";
+    if (category !== "Clothes") return "";
     const days = tripDays(currentTrip());
     if (!days) return "";
     const half = Math.max(1, Math.floor(days / 2));
