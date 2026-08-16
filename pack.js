@@ -732,7 +732,12 @@
   }
 
   function renderMine() {
-    const mine = tripItems(state.holiday.id).filter((i) => !isShared(i) && i.traveller_id === state.whoami);
+    // Your own personal items, plus any shared item you're down as
+    // responsible for - those are still things you have to pack, so they
+    // belong on your list. They carry a "Shared" tag so it's clear they're
+    // the trip's one copy and not yours alone. Unassigned shared items stay
+    // on the Shared tab only, since nobody has picked them up yet.
+    const mine = tripItems(state.holiday.id).filter((i) => i.traveller_id === state.whoami);
     el.mineSections.innerHTML = groupedSectionsHtml(mine);
     el.mineEmpty.hidden = mine.length > 0;
   }
@@ -849,7 +854,7 @@
       opts.showOwner && opts.compact
         ? `<span class="owner-tag">${escapeHtml(travellerName(item.traveller_id) || "Unassigned")}</span>`
         : "";
-    const sharedTag = isShared(item) && !opts.showOwner ? `<span class="owner-tag">Shared</span>` : "";
+    const sharedTag = isShared(item) && !opts.showOwner ? `<span class="shared-tag">👥 Shared</span>` : "";
 
     return `
       <li class="item-row${item.packed ? " is-packed" : ""}">

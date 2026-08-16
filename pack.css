@@ -353,6 +353,19 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   border-radius: 999px;
   padding: 2px 7px;
 }
+/* Distinct from .owner-tag (a plain grey pill for a person's name): this
+   marks the trip's single shared copy showing up on someone's own list. */
+.pack-screen .shared-tag {
+  flex: none;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 2px 7px;
+  white-space: nowrap;
+}
 .pack-screen .item-actions { display: flex; align-items: center; gap: 4px; flex: none; }
 .pack-screen .owner-select { width: auto; min-width: 104px; min-height: 36px; padding: 4px 24px 4px 8px; font-size: 0.8rem; }
 .pack-screen .qty-btn {
