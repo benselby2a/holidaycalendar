@@ -606,9 +606,9 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 /* --------------------------------------------------- item database rows */
 /* Breathing room between the filter row and the first section card, which
    otherwise sat flush against it. */
-.pack-screen #pack-database-filter-input { margin-bottom: 4px; }
-.pack-screen #pack-database-list { margin-top: 16px; }
-.pack-screen #pack-database-feedback:not([hidden]) + #pack-database-list { margin-top: 10px; }
+.pack-screen #pack-database-list { margin-top: 32px; }
+.pack-screen #pack-database-feedback:not([hidden]) { margin-top: 16px; }
+.pack-screen #pack-database-feedback:not([hidden]) + #pack-database-list { margin-top: 12px; }
 
 /* Section headers read as dividers, not just bold text: uppercase, tracked
    out, brand-coloured, with a rule under them. Scoped to this list so the
@@ -665,8 +665,15 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   line-height: 1;
 }
 .pack-screen .toggle-pill.is-on { border-color: var(--brand); background: var(--brand-soft); color: var(--brand); }
-/* Favourite reads as gold when on, distinct from the shared toggle. */
-.pack-screen .toggle-pill.is-on[data-toggle-fav-db] { color: #f59e0b; border-color: #f59e0b; }
+/* The favourite star is gold whether or not it's set, so it reads as the
+   favourite control at a glance; on/off shows through the filled glyph and
+   the tinted background rather than through colour alone. */
+.pack-screen .toggle-pill[data-toggle-fav-db] { color: #f59e0b; }
+.pack-screen .toggle-pill.is-on[data-toggle-fav-db] {
+  color: #f59e0b;
+  border-color: #f59e0b;
+  background: rgb(245 158 11 / 0.14);
+}
 
 /* Trip-length shortcuts on each item row - deliberately smaller and flatter
    than the +/- buttons so they read as secondary shortcuts, not the primary
