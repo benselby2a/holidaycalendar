@@ -1373,10 +1373,47 @@
     // user has deliberately picked a category, respect it.
     const category = (categoryManuallySet ? el.itemCategory.value : guessCategory(name)) || el.itemCategory.value || "Other";
 
+    // Anything typed here joins the catalogue, so it's one tap from Add
+    // Items next time rather than being retyped every trip. Matched on a
+    // canonical name so "socks" doesn't create a second "Socks".
+    let std = state.standardItems.find((s) => !s.deleted_at && canonicalKey(s.name) === canonicalKey(name));
+    if (!std) {
+      std = {
+        id: crypto.randomUUID(), household_id: APP_CONFIG.householdId,
+        name, category, shared: scope === "shared", sort_order: 0,
+        deleted_at: null, updated_at: new Date().toISOString()
+      };
+      state.standardItems.push(std);
+      await enqueue(std, "standard_items");
+    }
+
+    // packing_items_wizard_unique forbids the same catalogue item twice for
+    // one owner on a trip. Now that manual adds carry a standard_item_id
+    // they're subject to it too, so a repeat add bumps the existing row's
+    // quantity instead of inserting a duplicate that would 409 on sync.
+    const existing = state.items.find((i) =>
+      !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id === std.id &&
+      (i.traveller_id || null) === (travellerId || null));
+    if (existing) {
+      existing.quantity = clampInt(existing.quantity + quantity, 1, 99, 1);
+      touch(existing);
+      await persistLocal();
+      await enqueue(existing, "packing_items");
+      el.itemName.value = "";
+      el.itemQty.value = "1";
+      el.itemCategory.value = "Clothes";
+      categoryManuallySet = false;
+      render();
+      setAddPanelOpen(false);
+      showToast(`${name} × ${existing.quantity}`);
+      syncNow();
+      return;
+    }
+
     const item = {
       id: crypto.randomUUID(), holiday_id: trip.id, household_id: APP_CONFIG.householdId,
       name, category, quantity, scope, traveller_id: travellerId,
-      packed: false, packed_at: null, notes: null, source: "manual", standard_item_id: null, sort_order: 0,
+      packed: false, packed_at: null, notes: null, source: "manual", standard_item_id: std.id, sort_order: 0,
       deleted_at: null, updated_at: new Date().toISOString(), updated_by: currentUserId
     };
     state.items.push(item);
