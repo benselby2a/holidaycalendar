@@ -1345,10 +1345,6 @@
     const name = normalizeName(el.itemName.value);
     if (!name) return;
 
-    const scope = el.itemScope.value === "shared" ? "shared" : "personal";
-    const travellerId = scope === "shared" ? el.itemOwner.value || null : state.whoami;
-    if (scope === "personal" && !travellerId) return showToast("Add a traveller first");
-
     const quantity = clampInt(el.itemQty.value, 1, 99, 1);
     // "More options" is collapsed by default, so most adds never touch the
     // category select — guess it from the name instead of silently taking
@@ -1358,17 +1354,29 @@
 
     // Anything typed here joins the catalogue, so it's one tap from Add
     // Items next time rather than being retyped every trip. Matched on a
-    // canonical name so "socks" doesn't create a second "Socks".
+    // canonical name so "socks" doesn't create a second "Socks". Resolved
+    // before scope, because an existing entry's shared flag decides which
+    // list this lands on.
+    const formScope = el.itemScope.value === "shared" ? "shared" : "personal";
     let std = state.standardItems.find((s) => !s.deleted_at && canonicalKey(s.name) === canonicalKey(name));
     if (!std) {
       std = {
         id: crypto.randomUUID(), household_id: APP_CONFIG.householdId,
-        name, category, shared: scope === "shared", sort_order: 0,
+        name, category, shared: formScope === "shared", sort_order: 0,
         deleted_at: null, updated_at: new Date().toISOString()
       };
       state.standardItems.push(std);
       await enqueue(std, "standard_items");
     }
+
+    // The catalogue wins over the form's Mine/Shared selector: if the item
+    // is already marked shared, typing it in with "Mine" selected (the
+    // default, and collapsed out of sight under More options) shouldn't
+    // quietly put a second personal copy on your list. For a brand-new
+    // entry there's nothing to defer to, so the selector stands.
+    const scope = std.shared ? "shared" : formScope;
+    const travellerId = scope === "shared" ? (std.shared ? null : el.itemOwner.value || null) : state.whoami;
+    if (scope === "personal" && !travellerId) return showToast("Add a traveller first");
 
     // packing_items_wizard_unique forbids the same catalogue item twice for
     // one owner on a trip. Now that manual adds carry a standard_item_id
