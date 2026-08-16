@@ -11,7 +11,7 @@
 // in holidaycalendar.holidays, fetched fresh by id each time the screen
 // opens. This module only owns packing-specific data, all keyed by
 // holiday_id: travellers, trip_days (itinerary), packing_items,
-// standard_items (household-wide), and trip_meta (season/trip_types/notes,
+// standard_items + item_favourites (household-wide), and trip_meta (notes,
 // the packing-specific fields that don't belong on holidaycalendar.holidays).
 (function () {
   "use strict";
@@ -25,8 +25,6 @@
   };
 
   const CATEGORIES = ["Clothes", "Footwear", "Toiletries", "Health", "Tech", "Documents", "Food And Drink", "Other"];
-  const SEASONS = ["Any", "Warm Climate", "Cool Climate"];
-  const TRIP_TYPES = ["Beach Resort", "City", "Nature/Safari", "Activities", "Business", "Mountains"];
   const CATEGORY_KEYWORDS = {
     Clothes: ["shirt", "trouser", "jean", "jumper", "dress", "sock", "underwear", "coat", "jacket", "pyjama", "thermal", "short"],
     Footwear: ["shoe", "boot", "trainer", "sandal", "flip flop", "slipper"],
@@ -39,7 +37,7 @@
 
   const WHOAMI_KEY = "packing_list_whoami";
   const TOP_TAB_KEY = "packing_list_top_tab";
-  const TABLE_ORDER = ["travellers", "trip_meta", "trip_days", "standard_items", "packing_items"];
+  const TABLE_ORDER = ["travellers", "trip_meta", "trip_days", "standard_items", "item_favourites", "packing_items"];
 
   // Hardcoded on purpose: exactly two people ever use this app. Maps the
   // signed-in Supabase Auth email to a traveller name so opening a trip
@@ -61,6 +59,7 @@
     tripDays: [],
     items: [],
     standardItems: [],
+    favourites: [],
     pending: [],
     conflictQueue: [],
     syncing: false,
@@ -72,8 +71,6 @@
     whoami: null,
     sharedOwnerFilter: "all",
     editingStandardId: null,
-    standardFilter: "",
-    wizard: null,
     topTab: "itinerary"
   };
 
@@ -135,13 +132,7 @@
     state.topTab = localStorage.getItem(TOP_TAB_KEY) === "packing" ? "packing" : "itinerary";
 
     el.itemCategory.innerHTML = optionsHtml(CATEGORIES);
-    el.standardCategoryInput.innerHTML = optionsHtml(CATEGORIES);
-    el.settingsSeasonInput.innerHTML = optionsHtml(SEASONS);
-    el.wizardSeasonInput.innerHTML = optionsHtml(SEASONS);
-    el.settingsTypesInput.innerHTML = checkboxGridHtml("settings-type", TRIP_TYPES);
-    el.wizardTypesInput.innerHTML = checkboxGridHtml("wizard-type", TRIP_TYPES);
-    el.standardSeasonsInput.innerHTML = checkboxGridHtml("standard-season", SEASONS.filter((s) => s !== "Any"));
-    el.standardTypesInput.innerHTML = checkboxGridHtml("standard-type", TRIP_TYPES);
+    el.pickerCategoryInput.innerHTML = optionsHtml(CATEGORIES);
 
     categoryManuallySet = false;
     await refreshCurrentUser();
@@ -269,8 +260,6 @@
       state.tripMeta = {
         holiday_id: holidayId,
         household_id: APP_CONFIG.householdId,
-        season: "Any",
-        trip_types: [],
         notes: null,
         deleted_at: null,
         updated_at: new Date().toISOString(),
@@ -294,7 +283,6 @@
         </div>
         <h1 id="pack-trip-title" class="pack-title">PackIt</h1>
         <p id="pack-trip-subtitle" class="pack-subtitle"></p>
-        <div id="pack-trip-chips" class="chip-row"></div>
         <div class="progress-wrap">
           <div class="progress-track"><div id="pack-progress-bar" class="progress-bar"></div></div>
           <span id="pack-progress-text" class="progress-text"></span>
@@ -303,10 +291,7 @@
 
       <div id="pack-options-menu" class="options-menu" hidden>
         <button id="pack-undo-btn" class="icon-btn" type="button" disabled>Undo</button>
-        <button id="pack-settings-btn" class="icon-btn" type="button">Trip Settings</button>
         <button id="pack-travellers-btn" class="icon-btn" type="button">Travellers</button>
-        <button id="pack-wizard-btn" class="icon-btn" type="button">🐳🪄 Packing Wizard</button>
-        <button id="pack-standard-btn" class="icon-btn" type="button">Standard Items</button>
         <button id="pack-unpack-btn" class="icon-btn" type="button">Unpack Everything</button>
       </div>
 
@@ -340,15 +325,14 @@
             <button id="pack-tab-everyone-btn" class="tab-btn" type="button" data-tab="everyone">Everyone</button>
             <button id="pack-list-options-btn" class="icon-btn cog-btn" type="button" aria-label="List options" aria-haspopup="true" aria-expanded="false">⚙</button>
             <div id="pack-list-options-menu" class="list-options-menu" hidden>
+              <button id="pack-add-items-btn" class="icon-btn" type="button">🐳🪄 Add Items</button>
               <button id="pack-remove-all-btn" class="icon-btn danger-btn" type="button">Remove All Items</button>
-              <button id="pack-run-wizard-btn" class="icon-btn" type="button">🐳🪄 Packing Wizard</button>
-              <button id="pack-item-database-btn" class="icon-btn" type="button">Item Database</button>
             </div>
           </div>
 
           <div id="pack-pane-mine" class="pane">
             <div id="pack-mine-sections"></div>
-            <p id="pack-mine-empty" class="empty-note" hidden>Nothing on your list yet. Run the packing wizard or add an item.</p>
+            <p id="pack-mine-empty" class="empty-note" hidden>Nothing on your list yet — use Add Items, or the + button.</p>
           </div>
 
           <div id="pack-pane-shared" class="pane" hidden>
@@ -391,31 +375,6 @@
       </section>
       <button id="pack-add-fab-btn" class="add-fab-btn" type="button" aria-label="Add new item" hidden>＋</button>
 
-      <div id="pack-trip-settings-modal" class="modal">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h2>Trip Settings</h2>
-            <button id="pack-close-settings-btn" class="icon-btn" type="button">✕</button>
-          </div>
-          <p class="muted-line">Name, dates and destination live in Holiday Calendar. These only affect the packing wizard.</p>
-          <form id="pack-settings-form" class="stack-form" autocomplete="off">
-            <label>Season
-              <select id="pack-settings-season-input"></select>
-            </label>
-            <fieldset class="checkbox-grid">
-              <legend>Trip type</legend>
-              <div id="pack-settings-types-input"></div>
-            </fieldset>
-            <label>Notes
-              <textarea id="pack-settings-notes-input" rows="2" placeholder="Optional"></textarea>
-            </label>
-            <div class="db-actions">
-              <button class="icon-btn primary-btn" type="submit">Save</button>
-            </div>
-          </form>
-        </div>
-      </div>
-
       <div id="pack-travellers-modal" class="modal">
         <div class="modal-content">
           <div class="modal-header">
@@ -445,118 +404,21 @@
         </div>
       </div>
 
-      <div id="pack-wizard-modal" class="modal">
+      <div id="pack-picker-modal" class="modal">
         <div class="modal-content wide">
           <div class="modal-header">
-            <h2 id="pack-wizard-title">🐳🪄 Packing Wizard</h2>
-            <button id="pack-close-wizard-btn" class="icon-btn" type="button">✕</button>
+            <h2>🐳🪄 Add Items</h2>
+            <button id="pack-close-picker-btn" class="icon-btn" type="button">✕</button>
           </div>
-
-          <div id="pack-wizard-step-1" class="wizard-step">
-            <p class="muted-line">Check the trip details the defaults will be based on.</p>
-            <label>Season
-              <select id="pack-wizard-season-input"></select>
-            </label>
-            <fieldset class="checkbox-grid">
-              <legend>Trip type</legend>
-              <div id="pack-wizard-types-input"></div>
-            </fieldset>
-            <p id="pack-wizard-days-note" class="muted-line"></p>
-          </div>
-
-          <div id="pack-wizard-step-2" class="wizard-step" hidden>
-            <p class="muted-line">Who is going? Each person gets their own list.</p>
-            <ul id="pack-wizard-travellers" class="plain-list"></ul>
-          </div>
-
-          <div id="pack-wizard-step-3" class="wizard-step" hidden>
-            <p class="muted-line">Mandatory items are pre-checked - uncheck anything you don't need. Everything else is ranked by best match for this trip; check what you want and adjust quantities.</p>
-            <div id="pack-wizard-preview"></div>
-            <p id="pack-wizard-preview-empty" class="empty-note" hidden>No standard items yet. Add some under Item Database.</p>
-          </div>
-
-          <div class="db-actions wizard-actions">
-            <button id="pack-wizard-back-btn" class="icon-btn" type="button" hidden>Back</button>
-            <button id="pack-wizard-next-btn" class="icon-btn primary-btn" type="button">Next</button>
-            <button id="pack-wizard-apply-btn" class="icon-btn primary-btn" type="button" hidden>Add To Lists</button>
-          </div>
-        </div>
-      </div>
-
-      <div id="pack-standard-modal" class="modal">
-        <div class="modal-content wide">
-          <div class="modal-header">
-            <h2>Item Database</h2>
-            <button id="pack-close-standard-btn" class="icon-btn" type="button">✕</button>
-          </div>
-          <p class="muted-line">These defaults drive the packing wizard. <em>Per day</em> scales with trip length.</p>
-          <div class="db-filter-wrap">
-            <input id="pack-standard-filter-input" type="text" placeholder="Filter by name or category" autocomplete="off" />
-            <button id="pack-add-standard-btn" class="icon-btn primary-btn" type="button">Add</button>
-          </div>
-          <div id="pack-standard-feedback" class="db-feedback" hidden>Updated</div>
-          <ul id="pack-standard-list" class="plain-list"></ul>
-
-          <div id="pack-standard-edit-popup" class="meal-edit-popup" hidden>
-            <div class="meal-edit-popup-card">
-              <h3 id="pack-standard-edit-title">Standard Item</h3>
-              <form id="pack-standard-form" class="stack-form" autocomplete="off">
-                <label>Name
-                  <input id="pack-standard-name-input" type="text" required />
-                </label>
-                <div class="form-row">
-                  <label>Category
-                    <select id="pack-standard-category-input"></select>
-                  </label>
-                  <label>Applies to
-                    <select id="pack-standard-applies-input">
-                      <option value="person">Each person</option>
-                      <option value="trip">Shared for trip</option>
-                    </select>
-                  </label>
-                </div>
-                <div class="form-row">
-                  <label>Base qty
-                    <input id="pack-standard-base-input" type="number" inputmode="numeric" min="0" max="99" value="1" />
-                  </label>
-                  <label>Per day
-                    <select id="pack-standard-perday-input">
-                      <option value="0">N/A</option>
-                      <option value="1">1 per day</option>
-                      <option value="0.5">1 per 2 days</option>
-                      <option value="0.3333333333333333">1 per 3 days</option>
-                      <option value="0.2">1 per 5 days</option>
-                    </select>
-                  </label>
-                  <label>Max qty
-                    <input id="pack-standard-max-input" type="number" inputmode="numeric" min="0" max="99" value="0" />
-                  </label>
-                </div>
-                <fieldset class="checkbox-grid">
-                  <legend>Seasons (none = all)</legend>
-                  <div id="pack-standard-seasons-input"></div>
-                </fieldset>
-                <fieldset class="checkbox-grid">
-                  <legend>Trip types (none = all)</legend>
-                  <div id="pack-standard-types-input"></div>
-                </fieldset>
-                <label class="switch-row">
-                  <input id="pack-standard-mandatory-input" type="checkbox" />
-                  <span>Mandatory — always suggested and pre-checked</span>
-                </label>
-                <p class="muted-line">Skips season/trip type matching entirely, for things you need on pretty much every holiday.</p>
-                <label class="switch-row">
-                  <input id="pack-standard-enabled-input" type="checkbox" checked />
-                  <span>Enabled</span>
-                </label>
-                <div class="db-actions">
-                  <button id="pack-standard-save-btn" class="icon-btn primary-btn" type="submit">Save</button>
-                  <button id="pack-standard-delete-btn" class="icon-btn danger-btn" type="button" hidden>Delete</button>
-                  <button id="pack-standard-cancel-btn" class="icon-btn" type="button">Cancel</button>
-                </div>
-              </form>
-            </div>
-          </div>
+          <p class="muted-line">Tap an item to add it to your list. Star the ones you use often so they come up first next time.</p>
+          <form id="pack-picker-add-form" class="db-filter-wrap" autocomplete="off">
+            <input id="pack-picker-filter-input" type="text" placeholder="Search, or type a new item name" autocomplete="off" />
+            <select id="pack-picker-category-input" aria-label="Category for new item"></select>
+            <button id="pack-picker-create-btn" class="icon-btn primary-btn" type="submit">Add New</button>
+          </form>
+          <div id="pack-picker-feedback" class="db-feedback" hidden>Updated</div>
+          <div id="pack-picker-list"></div>
+          <p id="pack-picker-empty" class="empty-note" hidden>No items yet — type a name above to create your first one.</p>
         </div>
       </div>
 
@@ -586,15 +448,11 @@
     el.main = q("pack-main");
     el.optionsMenu = q("pack-options-menu");
     el.undoBtn = q("pack-undo-btn");
-    el.settingsBtn = q("pack-settings-btn");
     el.travellersBtn = q("pack-travellers-btn");
-    el.wizardBtn = q("pack-wizard-btn");
-    el.standardBtn = q("pack-standard-btn");
     el.unpackBtn = q("pack-unpack-btn");
 
     el.tripTitle = q("pack-trip-title");
     el.tripSubtitle = q("pack-trip-subtitle");
-    el.tripChips = q("pack-trip-chips");
     el.progressBar = q("pack-progress-bar");
     el.progressText = q("pack-progress-text");
 
@@ -609,8 +467,7 @@
     el.listOptionsBtn = q("pack-list-options-btn");
     el.listOptionsMenu = q("pack-list-options-menu");
     el.removeAllBtn = q("pack-remove-all-btn");
-    el.runWizardBtn = q("pack-run-wizard-btn");
-    el.itemDatabaseBtn = q("pack-item-database-btn");
+    el.addItemsBtn = q("pack-add-items-btn");
     el.mineSections = q("pack-mine-sections");
     el.mineEmpty = q("pack-mine-empty");
     el.sharedSections = q("pack-shared-sections");
@@ -634,12 +491,6 @@
     el.itemScope = q("pack-item-scope");
     el.itemOwner = q("pack-item-owner");
 
-    el.settingsModal = q("pack-trip-settings-modal");
-    el.closeSettingsBtn = q("pack-close-settings-btn");
-    el.settingsForm = q("pack-settings-form");
-    el.settingsSeasonInput = q("pack-settings-season-input");
-    el.settingsTypesInput = q("pack-settings-types-input");
-    el.settingsNotesInput = q("pack-settings-notes-input");
 
     el.travellersModal = q("pack-travellers-modal");
     el.closeTravellersBtn = q("pack-close-travellers-btn");
@@ -654,42 +505,14 @@
     el.daySaveBtn = q("pack-day-save-btn");
     el.dayCancelBtn = q("pack-day-cancel-btn");
 
-    el.wizardModal = q("pack-wizard-modal");
-    el.closeWizardBtn = q("pack-close-wizard-btn");
-    el.wizardStep1 = q("pack-wizard-step-1");
-    el.wizardStep2 = q("pack-wizard-step-2");
-    el.wizardStep3 = q("pack-wizard-step-3");
-    el.wizardSeasonInput = q("pack-wizard-season-input");
-    el.wizardTypesInput = q("pack-wizard-types-input");
-    el.wizardDaysNote = q("pack-wizard-days-note");
-    el.wizardTravellers = q("pack-wizard-travellers");
-    el.wizardPreview = q("pack-wizard-preview");
-    el.wizardPreviewEmpty = q("pack-wizard-preview-empty");
-    el.wizardBackBtn = q("pack-wizard-back-btn");
-    el.wizardNextBtn = q("pack-wizard-next-btn");
-    el.wizardApplyBtn = q("pack-wizard-apply-btn");
-
-    el.standardModal = q("pack-standard-modal");
-    el.closeStandardBtn = q("pack-close-standard-btn");
-    el.standardList = q("pack-standard-list");
-    el.standardFilterInput = q("pack-standard-filter-input");
-    el.addStandardBtn = q("pack-add-standard-btn");
-    el.standardFeedback = q("pack-standard-feedback");
-    el.standardEditPopup = q("pack-standard-edit-popup");
-    el.standardEditTitle = q("pack-standard-edit-title");
-    el.standardForm = q("pack-standard-form");
-    el.standardNameInput = q("pack-standard-name-input");
-    el.standardCategoryInput = q("pack-standard-category-input");
-    el.standardAppliesInput = q("pack-standard-applies-input");
-    el.standardBaseInput = q("pack-standard-base-input");
-    el.standardPerDayInput = q("pack-standard-perday-input");
-    el.standardMaxInput = q("pack-standard-max-input");
-    el.standardSeasonsInput = q("pack-standard-seasons-input");
-    el.standardTypesInput = q("pack-standard-types-input");
-    el.standardMandatoryInput = q("pack-standard-mandatory-input");
-    el.standardEnabledInput = q("pack-standard-enabled-input");
-    el.standardDeleteBtn = q("pack-standard-delete-btn");
-    el.standardCancelBtn = q("pack-standard-cancel-btn");
+    el.pickerModal = q("pack-picker-modal");
+    el.closePickerBtn = q("pack-close-picker-btn");
+    el.pickerList = q("pack-picker-list");
+    el.pickerEmpty = q("pack-picker-empty");
+    el.pickerAddForm = q("pack-picker-add-form");
+    el.pickerFilterInput = q("pack-picker-filter-input");
+    el.pickerCategoryInput = q("pack-picker-category-input");
+    el.pickerFeedback = q("pack-picker-feedback");
 
     el.checkToast = q("pack-check-toast");
     el.checkToastText = q("pack-check-toast-text");
@@ -703,18 +526,14 @@
   function bindEvents() {
     el.backBtn.addEventListener("click", close);
     el.undoBtn.addEventListener("click", undoLastAction);
-    el.settingsBtn.addEventListener("click", openSettingsModal);
     el.travellersBtn.addEventListener("click", openTravellersModal);
-    el.wizardBtn.addEventListener("click", openWizard);
-    el.standardBtn.addEventListener("click", openStandardModal);
     el.unpackBtn.addEventListener("click", unpackEverything);
 
     el.topTabBtns.forEach((btn) => btn.addEventListener("click", onTopTabClick));
     el.tabBtns.forEach((btn) => btn.addEventListener("click", () => setTab(btn.dataset.tab)));
     el.listOptionsBtn.addEventListener("click", toggleListOptionsMenu);
     el.removeAllBtn.addEventListener("click", () => { closeListOptionsMenu(); removeAllItems(); });
-    el.runWizardBtn.addEventListener("click", () => { closeListOptionsMenu(); openWizard(); });
-    el.itemDatabaseBtn.addEventListener("click", () => { closeListOptionsMenu(); openStandardModal(); });
+    el.addItemsBtn.addEventListener("click", () => { closeListOptionsMenu(); openPicker(); });
 
     el.mineSections.addEventListener("click", onItemListClick);
     el.mineSections.addEventListener("change", onItemListChange);
@@ -735,9 +554,6 @@
     el.itemScope.addEventListener("change", updateOwnerSelectVisibility);
     el.itemCategory.addEventListener("change", () => { categoryManuallySet = true; });
 
-    el.closeSettingsBtn.addEventListener("click", () => closeModal(el.settingsModal));
-    el.settingsForm.addEventListener("submit", onSettingsFormSubmit);
-
     el.closeTravellersBtn.addEventListener("click", () => closeModal(el.travellersModal));
     el.travellerForm.addEventListener("submit", onTravellerFormSubmit);
     el.travellersList.addEventListener("click", onTravellersListClick);
@@ -748,24 +564,10 @@
     el.dayEditBody.addEventListener("change", onDayEditFieldChange);
     el.dayEditBody.addEventListener("click", onDayEditApplyAllClick);
 
-    el.closeWizardBtn.addEventListener("click", () => closeModal(el.wizardModal));
-    el.wizardNextBtn.addEventListener("click", wizardNext);
-    el.wizardBackBtn.addEventListener("click", wizardBack);
-    el.wizardApplyBtn.addEventListener("click", applyWizard);
-    el.wizardTravellers.addEventListener("change", renderWizardTravellers);
-    el.wizardPreview.addEventListener("change", onWizardPreviewChange);
-    el.wizardPreview.addEventListener("click", onWizardPreviewClick);
-
-    el.closeStandardBtn.addEventListener("click", () => closeModal(el.standardModal));
-    el.addStandardBtn.addEventListener("click", () => openStandardEditor(null));
-    el.standardFilterInput.addEventListener("input", () => {
-      state.standardFilter = el.standardFilterInput.value.trim().toLowerCase();
-      renderStandardList();
-    });
-    el.standardList.addEventListener("click", onStandardListClick);
-    el.standardForm.addEventListener("submit", onStandardFormSubmit);
-    el.standardDeleteBtn.addEventListener("click", deleteEditedStandardItem);
-    el.standardCancelBtn.addEventListener("click", closeStandardEditor);
+    el.closePickerBtn.addEventListener("click", () => closeModal(el.pickerModal));
+    el.pickerAddForm.addEventListener("submit", onPickerCreateSubmit);
+    el.pickerFilterInput.addEventListener("input", renderPicker);
+    el.pickerList.addEventListener("click", onPickerListClick);
 
     el.closeConflictBtn.addEventListener("click", acknowledgeConflict);
     el.resolveConflictBtn.addEventListener("click", acknowledgeConflict);
@@ -782,7 +584,6 @@
 
     root.addEventListener("keydown", (e) => {
       if (e.key !== "Escape") return;
-      if (!el.standardEditPopup.hidden) return closeStandardEditor();
       const open = root.querySelector(".modal.is-open");
       if (open) closeModal(open);
       else if (!el.listOptionsMenu.hidden) closeListOptionsMenu();
@@ -804,8 +605,6 @@
       destination: state.holiday.country,
       start_date: state.holiday.startDate,
       end_date: state.holiday.endDate,
-      season: state.tripMeta?.season || "Any",
-      trip_types: state.tripMeta?.trip_types || [],
       notes: state.tripMeta?.notes || ""
     };
   }
@@ -822,11 +621,6 @@
     const bits = [trip.destination, formatTripDates(trip), days ? `${days} ${days === 1 ? "day" : "days"}` : ""].filter(Boolean);
     if (state.holiday.status) bits.push(state.holiday.status);
     el.tripSubtitle.textContent = bits.join(" · ") || "No dates set";
-
-    const chips = [];
-    if (trip.season && trip.season !== "Any") chips.push(trip.season);
-    chips.push(...(trip.trip_types || []));
-    el.tripChips.innerHTML = chips.map((c) => `<span class="chip">${escapeHtml(c)}</span>`).join("");
 
     const items = tripItems(trip.id);
     const packed = items.filter((i) => i.packed).length;
@@ -1049,15 +843,33 @@
                  ${ownerSelect}
                  <button class="qty-btn" type="button" data-qty-down="${item.id}" aria-label="Decrease quantity">−</button>
                  <button class="qty-btn" type="button" data-qty-up="${item.id}" aria-label="Increase quantity">+</button>
+                 ${qtyPresetButtonsHtml(item)}
                  <button class="delete-btn" type="button" data-delete-item="${item.id}" aria-label="Delete item">✕</button>
                </div>`
         }
       </li>`;
   }
 
+  // "one per day" / "one per two days" as one tap, using the trip's own
+  // length. Set the quantity outright rather than incrementing - these are
+  // shorthand for a final answer, not a nudge. Hidden entirely when the
+  // trip has no dates, since there'd be no number to apply.
+  function qtyPresetButtonsHtml(item) {
+    const days = tripDays(currentTrip());
+    if (!days) return "";
+    const half = Math.max(1, Math.floor(days / 2));
+    return `
+      <button class="qty-preset-btn" type="button" data-qty-set="${item.id}" data-qty-value="${days}"
+        aria-label="Set quantity to ${days} (one per day)" title="One per day (${days})">${days}d</button>
+      <button class="qty-preset-btn" type="button" data-qty-set="${item.id}" data-qty-value="${half}"
+        aria-label="Set quantity to ${half} (one per two days)" title="One per two days (${half})">½</button>`;
+  }
+
   function onItemListClick(e) {
     const toggle = e.target.closest("[data-toggle-item]");
     if (toggle) return togglePacked(toggle.dataset.toggleItem);
+    const preset = e.target.closest("[data-qty-set]");
+    if (preset) return setQuantity(preset.dataset.qtySet, Number(preset.dataset.qtyValue));
     const up = e.target.closest("[data-qty-up]");
     if (up) return changeQuantity(up.dataset.qtyUp, 1);
     const down = e.target.closest("[data-qty-down]");
@@ -1566,6 +1378,20 @@
     syncNow();
   }
 
+  async function setQuantity(itemId, quantity) {
+    const item = state.items.find((i) => i.id === itemId);
+    if (!item) return;
+    const next = clampInt(quantity, 1, 99, 1);
+    if (next === item.quantity) return;
+    item.quantity = next;
+    touch(item);
+    await persistLocal();
+    await enqueue(item, "packing_items");
+    render();
+    showToast(`${item.name} × ${next}`);
+    syncNow();
+  }
+
   async function changeQuantity(itemId, delta) {
     const item = state.items.find((i) => i.id === itemId);
     if (!item) return;
@@ -1710,29 +1536,6 @@
   // holidaycalendar.holidays, edited from that app's own modal)
   // ---------------------------------------------------------------------
 
-  function openSettingsModal() {
-    closeOptionsMenu();
-    const trip = currentTrip();
-    el.settingsSeasonInput.value = trip.season || "Any";
-    setCheckboxGroup(el.settingsTypesInput, trip.trip_types || []);
-    el.settingsNotesInput.value = trip.notes || "";
-    openModal(el.settingsModal);
-  }
-
-  async function onSettingsFormSubmit(e) {
-    e.preventDefault();
-    state.tripMeta.season = el.settingsSeasonInput.value || "Any";
-    state.tripMeta.trip_types = readCheckboxGroup(el.settingsTypesInput);
-    state.tripMeta.notes = el.settingsNotesInput.value.trim() || null;
-    touch(state.tripMeta);
-    await persistLocal();
-    await enqueue(state.tripMeta, "trip_meta");
-    closeModal(el.settingsModal);
-    render();
-    showToast("Trip settings saved");
-    syncNow();
-  }
-
   // ---------------------------------------------------------------------
   // Travellers
   // ---------------------------------------------------------------------
@@ -1824,485 +1627,226 @@
   }
 
   // ---------------------------------------------------------------------
-  // Packing wizard
+  // Add Items picker (replaces the old Packing Wizard).
+  //
+  // The catalogue is just name + category now; how relevant an item is to
+  // this trip is expressed by the user favouriting it, not by season /
+  // trip-type matching. Favourites are per signed-in account (see
+  // item_favourites), so Ben starring "Razor" doesn't put it in front of
+  // Louise. Quantity is always 1 on add - the trip-length presets on the
+  // item row itself are how you scale it afterwards.
   // ---------------------------------------------------------------------
 
-  function openWizard() {
-    closeOptionsMenu();
+  function openPicker() {
+    if (!currentTrip()) return;
+    el.pickerFilterInput.value = "";
+    renderPicker();
+    openModal(el.pickerModal);
+  }
+
+  function favouriteIdsForCurrentUser() {
+    if (!currentUserId) return new Set();
+    return new Set(
+      state.favourites
+        .filter((f) => !f.deleted_at && f.user_id === currentUserId)
+        .map((f) => f.standard_item_id)
+    );
+  }
+
+  // Which catalogue items are already on this person's list for this trip,
+  // so the picker can show them as added rather than letting you add a
+  // duplicate.
+  function addedStandardIdsForCurrentUser() {
     const trip = currentTrip();
-    if (!trip) return;
-    state.wizard = { step: 1, selectedTravellers: defaultWizardTravellers(trip), preview: [] };
-
-    el.wizardSeasonInput.value = trip.season && trip.season !== "Any" ? trip.season : "Any";
-    setCheckboxGroup(el.wizardTypesInput, trip.trip_types || []);
-    updateWizardDaysNote(trip);
-    renderWizardStep();
-    openModal(el.wizardModal);
+    if (!trip) return new Set();
+    return new Set(
+      state.items
+        .filter((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id && i.traveller_id === state.whoami)
+        .map((i) => i.standard_item_id)
+    );
   }
 
-  // Defaults to just the signed-in traveller, so the common case - one
-  // person running the wizard for their own list - needs zero clicks on
-  // the traveller step. Someone building a list on another traveller's
-  // behalf (e.g. a parent packing for a child) just checks that person
-  // instead - each run is independent, so running it again later for
-  // someone else, or for yourself, doesn't touch what an earlier run
-  // already added. Falls back to everyone if there's no recognised
-  // signed-in traveller to default to.
-  function defaultWizardTravellers(trip) {
-    const people = tripTravellers(trip.id);
-    if (state.whoami && people.some((p) => p.id === state.whoami)) return [state.whoami];
-    return people.map((p) => p.id);
-  }
+  function renderPicker() {
+    const query = canonicalKey(el.pickerFilterInput.value);
+    const favIds = favouriteIdsForCurrentUser();
+    const addedIds = addedStandardIdsForCurrentUser();
 
-  function updateWizardDaysNote(trip) {
-    const days = tripDays(trip);
-    el.wizardDaysNote.textContent = days
-      ? `${days} day${days === 1 ? "" : "s"} — per-day defaults will be scaled to match.`
-      : "Set trip dates in Holiday Calendar so per-day defaults (like underwear) can be scaled.";
-  }
-
-  function renderWizardStep() {
-    const step = state.wizard?.step || 1;
-    el.wizardStep1.hidden = step !== 1;
-    el.wizardStep2.hidden = step !== 2;
-    el.wizardStep3.hidden = step !== 3;
-    el.wizardBackBtn.hidden = step === 1;
-    el.wizardNextBtn.hidden = step === 3;
-    el.wizardApplyBtn.hidden = step !== 3;
-    if (step === 2) renderWizardTravellers();
-    if (step === 3) renderWizardPreview();
-  }
-
-  function renderWizardTravellers() {
-    const people = tripTravellers(state.holiday.id);
-    const selected = new Set(state.wizard?.selectedTravellers || []);
-    el.wizardTravellers.querySelectorAll("input[data-traveller-id]").forEach((box) => {
-      if (box.checked) selected.add(box.dataset.travellerId);
-      else selected.delete(box.dataset.travellerId);
-    });
-    state.wizard.selectedTravellers = [...selected].filter((id) => people.some((p) => p.id === id));
-
-    el.wizardTravellers.innerHTML = people.length
-      ? people.map((t) => `
-        <li class="plain-row">
-          <label class="switch-row">
-            <input type="checkbox" data-traveller-id="${t.id}"${selected.has(t.id) ? " checked" : ""} />
-            <span>${escapeHtml(t.name)}${t.id === state.whoami ? " (you)" : ""}</span>
-          </label>
-        </li>`).join("")
-      : `<li class="empty-note">Add at least one traveller.</li>`;
-  }
-
-  function wizardBack() {
-    if (!state.wizard) return;
-    state.wizard.step = Math.max(1, state.wizard.step - 1);
-    renderWizardStep();
-  }
-
-  async function wizardNext() {
-    if (!state.wizard) return;
-    const trip = currentTrip();
-
-    if (state.wizard.step === 1) {
-      state.tripMeta.season = el.wizardSeasonInput.value || "Any";
-      state.tripMeta.trip_types = readCheckboxGroup(el.wizardTypesInput);
-      touch(state.tripMeta);
-      await persistLocal();
-      await enqueue(state.tripMeta, "trip_meta");
-      render();
-      state.wizard.step = 2;
-    } else if (state.wizard.step === 2) {
-      renderWizardTravellers();
-      if (!state.wizard.selectedTravellers.length) return showToast("Select at least one traveller");
-      state.wizard.preview = buildWizardPreview();
-      state.wizard.step = 3;
-    }
-    renderWizardStep();
-  }
-
-  // Two tiers, per direct instruction: mandatory items are pre-checked and
-  // shown regardless of season/trip type (things needed on pretty much
-  // every holiday), everything else is shown too - never hidden outright
-  // just for an imperfect season/trip-type match - but ranked by relevance
-  // and left unchecked, so the user opts in rather than opts out. This is
-  // also what fixes the earlier "item silently stops being suggested at
-  // all" failure mode: a stale or mismatched tag can only push an item
-  // down the list now, never disappear it.
-  function buildWizardPreview() {
-    const trip = currentTrip();
-    const days = tripDays(trip) || 1;
-    const season = trip.season || "Any";
-    const types = trip.trip_types || [];
-
-    const candidates = state.standardItems.filter((s) => !s.deleted_at && s.enabled !== false);
-    const mandatory = candidates.filter((s) => s.mandatory).sort((a, b) => a.name.localeCompare(b.name));
-    const suggested = candidates
-      .filter((s) => !s.mandatory)
-      .map((std) => ({ std, score: wizardRelevanceScore(std, season, types), tailored: wizardIsTailored(std, season, types) }))
-      .sort((a, b) => b.score - a.score || a.std.name.localeCompare(b.std.name));
-
-    const rows = [];
-    const addRows = (std, isMandatory, tailored, matchPercent) => {
-      const quantity = quantityForStandardItem(std, days);
-      if (std.applies_to === "trip") {
-        const exists = state.items.some((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id === std.id && i.scope === "shared");
-        rows.push({ key: `${std.id}:shared`, standardItemId: std.id, name: std.name, category: std.category, scope: "shared", travellerId: null, ownerLabel: "Shared", quantity, mandatory: isMandatory, tailored, matchPercent, include: !exists && isMandatory, exists });
-      } else {
-        for (const travellerId of state.wizard.selectedTravellers) {
-          const exists = state.items.some((i) => !i.deleted_at && i.holiday_id === trip.id && i.standard_item_id === std.id && i.traveller_id === travellerId && i.scope === "personal");
-          rows.push({ key: `${std.id}:${travellerId}`, standardItemId: std.id, name: std.name, category: std.category, scope: "personal", travellerId, ownerLabel: travellerName(travellerId), quantity, mandatory: isMandatory, tailored, matchPercent, include: !exists && isMandatory, exists });
-        }
-      }
-    };
-
-    for (const std of mandatory) addRows(std, true, true, null);
-    for (const { std, score, tailored } of suggested) addRows(std, false, tailored, Math.round((score / WIZARD_MAX_SCORE) * 100));
-    return rows;
-  }
-
-  function quantityForStandardItem(std, days) {
-    const base = Number(std.base_qty) || 0;
-    const perDay = Number(std.per_day) || 0;
-    let qty = base + Math.ceil(perDay * days);
-    const max = Number(std.max_qty) || 0;
-    if (max > 0) qty = Math.min(qty, max);
-    return Math.max(1, qty);
-  }
-
-  // Max possible from wizardRelevanceScore (season + trip-type, 2 points
-  // each) - used to turn the raw score into the % shown next to suggested
-  // items.
-  const WIZARD_MAX_SCORE = 4;
-
-  // Higher = more likely wanted on this trip. A tag the item doesn't have
-  // at all (applies everywhere) scores the same as an actual match - only
-  // a tag that's present but doesn't match this trip scores lower, and
-  // even then it's a lower rank, never an exclusion.
-  function wizardRelevanceScore(std, season, types) {
-    const seasons = (std.seasons || []).filter(Boolean);
-    const seasonScore = !seasons.length || seasons.includes("Any") ? 1 : season && season !== "Any" && seasons.includes(season) ? 2 : 0;
-    const tripTypes = (std.trip_types || []).filter(Boolean);
-    const typeScore = !tripTypes.length || tripTypes.includes("Any") ? 1 : tripTypes.some((t) => types.includes(t)) ? 2 : 0;
-    return seasonScore + typeScore;
-  }
-
-  // A tighter, binary version of the same check: true only when the item
-  // has no season/trip-type tag it actively fails on this trip. Drives
-  // which suggested items show up front by default vs. tucked under
-  // "Show more" - the score above still orders both groups, this just
-  // decides which group. Nothing built on this ever excludes an item
-  // outright (that was the earlier bug); it only decides what's visible
-  // without an extra tap.
-  function wizardIsTailored(std, season, types) {
-    const seasons = (std.seasons || []).filter(Boolean);
-    const seasonOk = !seasons.length || seasons.includes("Any") || (season && season !== "Any" && seasons.includes(season));
-    const tripTypes = (std.trip_types || []).filter(Boolean);
-    const typeOk = !tripTypes.length || tripTypes.includes("Any") || tripTypes.some((t) => types.includes(t));
-    return seasonOk && typeOk;
-  }
-
-  function renderWizardPreview() {
-    const rows = state.wizard?.preview || [];
-    el.wizardPreviewEmpty.hidden = rows.length > 0;
-
-    const groups = new Map();
-    for (const row of rows) {
-      const key = row.scope === "shared" ? "Shared list" : row.ownerLabel || "Unassigned";
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(row);
-    }
-
-    el.wizardPreview.innerHTML = [...groups.entries()]
-      .map(([label, groupRows]) => {
-        const included = groupRows.filter((r) => r.include).length;
-        const mandatoryRows = groupRows.filter((r) => r.mandatory);
-        const tailoredRows = groupRows.filter((r) => !r.mandatory && r.tailored);
-        const moreRows = groupRows.filter((r) => !r.mandatory && !r.tailored);
-
-        const suggestedHeader = tailoredRows.length || moreRows.length
-          ? `<li class="wizard-section-label">Suggested — check the ones you want</li>`
-          : "";
-        const moreToggle = moreRows.length
-          ? `<li class="wizard-more-toggle">
-               <details class="add-more">
-                 <summary>Show ${moreRows.length} more item${moreRows.length === 1 ? "" : "s"}</summary>
-                 <ul class="item-list">${moreRows.map(wizardRowHtml).join("")}</ul>
-               </details>
-             </li>`
-          : "";
-
-        return `
-          <section class="card section-card">
-            <header class="section-head"><h3>${escapeHtml(label)}</h3><span class="section-count">${included} new</span></header>
-            <ul class="item-list">${mandatoryRows.map(wizardRowHtml).join("")}${suggestedHeader}${tailoredRows.map(wizardRowHtml).join("")}${moreToggle}</ul>
-          </section>`;
-      })
-      .join("");
-  }
-
-  function wizardRowHtml(row) {
-    // Mandatory rows carry no score (matchPercent is null) - they're
-    // included unconditionally, so a match % wouldn't mean anything there.
-    const scoreBadge = row.matchPercent == null
-      ? ""
-      : `<span class="match-score" title="How well this matches the trip's season and trip type">${row.matchPercent}%</span>`;
-    return `
-      <li class="wizard-row${row.exists ? " is-existing" : ""}">
-        <label class="switch-row">
-          <input type="checkbox" data-preview-key="${row.key}"${row.include ? " checked" : ""}${row.exists ? " disabled" : ""} />
-          <span>${escapeHtml(row.name)}</span>
-        </label>
-        <span class="wizard-row-meta">
-          ${scoreBadge}
-          <span class="muted-line">${escapeHtml(row.category)}${row.exists ? " · already on list" : ""}</span>
-          <input class="qty-input" type="number" inputmode="numeric" min="1" max="99" value="${row.quantity}" data-preview-qty="${row.key}"${row.exists ? " disabled" : ""} aria-label="Quantity" />
-          <button class="icon-btn cog-btn" type="button" data-edit-standard-from-wizard="${row.standardItemId}" aria-label="Edit ${escapeHtml(row.name)}'s wizard settings">⚙</button>
-        </span>
-      </li>`;
-  }
-
-  function onWizardPreviewChange(e) {
-    const box = e.target.closest("[data-preview-key]");
-    if (box) {
-      const row = state.wizard.preview.find((r) => r.key === box.dataset.previewKey);
-      if (row) row.include = box.checked;
-      return;
-    }
-    const qty = e.target.closest("[data-preview-qty]");
-    if (qty) {
-      const row = state.wizard.preview.find((r) => r.key === qty.dataset.previewQty);
-      if (row) row.quantity = clampInt(qty.value, 1, 99, 1);
-    }
-  }
-
-  // Opens the Item Database editor for one wizard row's underlying
-  // standard item, so a rule spotted mid-review (wrong category, missing
-  // a season/trip type, a per-day rate that's off) can be fixed on the
-  // spot for future trips. Layers the standard-items modal on top of the
-  // still-open wizard rather than closing it — this session's preview
-  // (state.wizard.preview) intentionally isn't rebuilt afterward, so any
-  // checkbox/quantity tweaks already made in this review aren't lost;
-  // the edit only takes effect the next time the wizard runs.
-  function onWizardPreviewClick(e) {
-    const btn = e.target.closest("[data-edit-standard-from-wizard]");
-    if (!btn) return;
-    openStandardModal();
-    openStandardEditor(btn.dataset.editStandardFromWizard);
-  }
-
-  async function applyWizard() {
-    const trip = currentTrip();
-    const rows = (state.wizard?.preview || []).filter((r) => r.include && !r.exists);
-    if (!rows.length) {
-      closeModal(el.wizardModal);
-      return showToast("Nothing new to add");
-    }
-
-    const created = [];
-    for (const row of rows) {
-      const item = {
-        id: crypto.randomUUID(), holiday_id: trip.id, household_id: APP_CONFIG.householdId,
-        name: row.name, category: row.category, quantity: row.quantity, scope: row.scope, traveller_id: row.travellerId,
-        packed: false, packed_at: null, notes: null, source: "wizard", standard_item_id: row.standardItemId, sort_order: 0,
-        deleted_at: null, updated_at: new Date().toISOString(), updated_by: currentUserId
-      };
-      state.items.push(item);
-      created.push(item.id);
-      await enqueue(item, "packing_items");
-    }
-
-    captureUndo("wizard", { itemIds: created }, `${created.length} items`);
-    await persistLocal();
-    closeModal(el.wizardModal);
-    render();
-    showToast(`Added ${created.length} item${created.length === 1 ? "" : "s"}`);
-    syncNow();
-  }
-
-  // ---------------------------------------------------------------------
-  // Standard items
-  // ---------------------------------------------------------------------
-
-  function openStandardModal() {
-    closeOptionsMenu();
-    state.standardFilter = "";
-    el.standardFilterInput.value = "";
-    renderStandardList();
-    openModal(el.standardModal);
-  }
-
-  function renderStandardList() {
-    // Toggling/saving/deleting a row re-renders the whole list (simplest
-    // way to keep sort order and filtering correct), which replaces every
-    // <li> including the one just interacted with - losing the modal's
-    // scroll position as a side effect. Save/restore it explicitly so
-    // acting on a row halfway down a long list doesn't jump you back to
-    // the top.
-    const scrollTop = el.standardModal.scrollTop;
-
-    const query = state.standardFilter;
-    const rows = state.standardItems
+    const all = state.standardItems
       .filter((s) => !s.deleted_at)
-      .filter((s) => !query || canonicalKey(s.name).includes(query) || s.category.toLowerCase().includes(query))
-      .sort((a, b) => (a.category || "").localeCompare(b.category || "") || (a.sort_order || 0) - (b.sort_order || 0) || a.name.localeCompare(b.name));
+      .filter((s) => !query || canonicalKey(s.name).includes(query) || canonicalKey(s.category).includes(query));
 
-    el.standardList.innerHTML = rows.length ? rows.map(standardRowHtml).join("") : `<li class="empty-note">No standard items match.</li>`;
-    el.standardModal.scrollTop = scrollTop;
-    // The re-render just destroyed whatever had focus (the checkbox/button
-    // the user clicked), and the browser's own focus-loss handling can
-    // nudge scroll position again right after this runs - reapply once
-    // more next frame so that doesn't quietly undo the restore above.
-    requestAnimationFrame(() => { el.standardModal.scrollTop = scrollTop; });
+    el.pickerEmpty.hidden = state.standardItems.some((s) => !s.deleted_at);
+
+    const byName = (a, b) => a.name.localeCompare(b.name);
+    const favourites = all.filter((s) => favIds.has(s.id)).sort(byName);
+    const rest = all.filter((s) => !favIds.has(s.id));
+
+    // Everything else grouped by category so a long catalogue stays
+    // navigable; favourites float to their own section at the top.
+    const groups = new Map();
+    for (const std of rest.sort(byName)) {
+      const key = CATEGORIES.includes(std.category) ? std.category : "Other";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(std);
+    }
+    const ordered = CATEGORIES.filter((c) => groups.has(c)).map((c) => [c, groups.get(c)]);
+
+    const section = (label, list) => `
+      <section class="card section-card">
+        <header class="section-head"><h3>${escapeHtml(label)}</h3><span class="section-count">${list.length}</span></header>
+        <ul class="item-list">${list.map((std) => pickerRowHtml(std, favIds.has(std.id), addedIds.has(std.id))).join("")}</ul>
+      </section>`;
+
+    el.pickerList.innerHTML =
+      (favourites.length ? section("★ Favourites", favourites) : "") +
+      ordered.map(([label, list]) => section(label, list)).join("");
+
+    if (all.length === 0 && state.standardItems.some((s) => !s.deleted_at)) {
+      el.pickerList.innerHTML = `<p class="empty-note">Nothing matches — type a name above and press Add New to create it.</p>`;
+    }
   }
 
-  // Mirrors the "Per day" dropdown's own wording (openStandardEditor's
-  // options are 0/1/0.5/1÷3/0.2) so the summary line reads the same way
-  // the value was picked, instead of a raw decimal like "0.333.../day".
-  // Rounds to the closest of the dropdown's own rates rather than requiring
-  // an exact match, so an odd legacy value (e.g. 0.34, from before the
-  // free-number input was replaced with this fixed set) still reads as a
-  // sensible label instead of falling through to a raw decimal.
-  const PER_DAY_LABELS = [
-    { value: 1, label: "1/day" },
-    { value: 0.5, label: "1/2 days" },
-    { value: 1 / 3, label: "1/3 days" },
-    { value: 0.2, label: "1/5 days" }
-  ];
-  function perDayLabel(perDay) {
-    const n = Number(perDay) || 0;
-    return PER_DAY_LABELS.reduce((best, opt) => (Math.abs(opt.value - n) < Math.abs(best.value - n) ? opt : best)).label;
-  }
-
-  function standardRowHtml(std) {
-    const rule = [];
-    if (Number(std.per_day) > 0) rule.push(perDayLabel(std.per_day));
-    if (Number(std.base_qty) > 0) rule.push(`+${std.base_qty}`);
-    if (Number(std.max_qty) > 0) rule.push(`max ${std.max_qty}`);
-    const filters = [...(std.seasons || []), ...(std.trip_types || [])];
-
+  function pickerRowHtml(std, isFavourite, isAdded) {
     return `
-      <li class="plain-row standard-row${std.enabled === false ? " is-disabled" : ""}">
-        <button class="standard-main" type="button" data-edit-standard="${std.id}">
-          <span class="standard-name">${escapeHtml(std.name)}${std.mandatory ? '<span class="mandatory-badge">Mandatory</span>' : ""}</span>
-          <span class="muted-line">${escapeHtml(std.category)} · ${std.applies_to === "trip" ? "shared" : "per person"}${rule.length ? ` · ${escapeHtml(rule.join(" "))}` : ""}</span>
-          ${filters.length ? `<span class="chip-row">${filters.map((f) => `<span class="chip">${escapeHtml(f)}</span>`).join("")}</span>` : ""}
+      <li class="picker-row${isAdded ? " is-added" : ""}">
+        <button class="fav-btn${isFavourite ? " is-on" : ""}" type="button" data-toggle-fav="${std.id}"
+          aria-label="${isFavourite ? "Remove" : "Add"} ${escapeHtml(std.name)} from favourites"
+          aria-pressed="${isFavourite ? "true" : "false"}">${isFavourite ? "★" : "☆"}</button>
+        <button class="picker-main" type="button" data-add-standard="${std.id}"${isAdded ? " disabled" : ""}>
+          <span class="picker-name">${escapeHtml(std.name)}</span>
+          <span class="muted-line">${escapeHtml(std.category)}${isAdded ? " · on your list" : ""}</span>
         </button>
-        <span class="row-actions">
-          <label class="switch-row" title="Enabled">
-            <input type="checkbox" data-toggle-standard="${std.id}"${std.enabled === false ? "" : " checked"} />
-          </label>
-          <button class="delete-btn" type="button" data-delete-standard="${std.id}" aria-label="Delete ${escapeHtml(std.name)}">✕</button>
-        </span>
+        <button class="delete-btn" type="button" data-delete-standard="${std.id}" aria-label="Delete ${escapeHtml(std.name)} from the catalogue">✕</button>
       </li>`;
   }
 
-  function onStandardListClick(e) {
-    const edit = e.target.closest("[data-edit-standard]");
-    if (edit) return openStandardEditor(edit.dataset.editStandard);
-    const toggle = e.target.closest("[data-toggle-standard]");
-    if (toggle) return toggleStandardEnabled(toggle.dataset.toggleStandard, toggle.checked);
+  function onPickerListClick(e) {
+    const fav = e.target.closest("[data-toggle-fav]");
+    if (fav) return toggleFavourite(fav.dataset.toggleFav);
+    const add = e.target.closest("[data-add-standard]");
+    if (add) return addStandardItemToList(add.dataset.addStandard);
     const del = e.target.closest("[data-delete-standard]");
     if (del) return deleteStandardItem(del.dataset.deleteStandard);
   }
 
-  async function toggleStandardEnabled(id, enabled) {
-    const std = state.standardItems.find((s) => s.id === id);
-    if (!std) return;
-    std.enabled = enabled;
-    touch(std);
+  async function toggleFavourite(standardItemId) {
+    if (!currentUserId) return showPickerFeedback("Sign in to use favourites");
+    const std = state.standardItems.find((s) => s.id === standardItemId);
+    const existing = state.favourites.find((f) => f.standard_item_id === standardItemId && f.user_id === currentUserId);
+
+    if (existing && !existing.deleted_at) {
+      existing.deleted_at = new Date().toISOString();
+      touch(existing);
+      await enqueue(existing, "item_favourites");
+      showPickerFeedback(`${std?.name || "Item"} un-starred`);
+    } else if (existing) {
+      // Re-favouriting something previously un-starred: revive the row
+      // rather than inserting a second one, which the unique index on
+      // (standard_item_id, user_id) where deleted_at is null would reject.
+      existing.deleted_at = null;
+      touch(existing);
+      await enqueue(existing, "item_favourites");
+      showPickerFeedback(`${std?.name || "Item"} starred`);
+    } else {
+      const fav = {
+        id: crypto.randomUUID(),
+        household_id: APP_CONFIG.householdId,
+        standard_item_id: standardItemId,
+        user_id: currentUserId,
+        deleted_at: null,
+        updated_at: new Date().toISOString(),
+        updated_by: currentUserId
+      };
+      state.favourites.push(fav);
+      await enqueue(fav, "item_favourites");
+      showPickerFeedback(`${std?.name || "Item"} starred`);
+    }
+
     await persistLocal();
-    await enqueue(std, "standard_items");
-    renderStandardList();
-    showStandardFeedback(`${std.name} ${enabled ? "enabled" : "disabled"}`);
+    renderPicker();
     syncNow();
   }
 
-  function openStandardEditor(id) {
-    state.editingStandardId = id;
-    const std = id ? state.standardItems.find((s) => s.id === id) : null;
+  async function addStandardItemToList(standardItemId) {
+    const trip = currentTrip();
+    const std = state.standardItems.find((s) => s.id === standardItemId);
+    if (!trip || !std) return;
+    if (!state.whoami) return showPickerFeedback("No traveller to add to");
 
-    el.standardEditTitle.textContent = std ? "Edit Standard Item" : "New Standard Item";
-    el.standardNameInput.value = std?.name || "";
-    el.standardCategoryInput.value = std?.category || "Other";
-    el.standardAppliesInput.value = std?.applies_to || "person";
-    el.standardBaseInput.value = std?.base_qty ?? 1;
-    el.standardPerDayInput.value = std?.per_day ?? 0;
-    el.standardMaxInput.value = std?.max_qty ?? 0;
-    el.standardEnabledInput.checked = std ? std.enabled !== false : true;
-    el.standardMandatoryInput.checked = Boolean(std?.mandatory);
-    setCheckboxGroup(el.standardSeasonsInput, std?.seasons || []);
-    setCheckboxGroup(el.standardTypesInput, std?.trip_types || []);
-    el.standardDeleteBtn.hidden = !std;
-
-    el.standardEditPopup.hidden = false;
-    el.standardNameInput.focus();
+    const item = {
+      id: crypto.randomUUID(), holiday_id: trip.id, household_id: APP_CONFIG.householdId,
+      name: std.name, category: std.category, quantity: 1, scope: "personal", traveller_id: state.whoami,
+      packed: false, packed_at: null, notes: null, source: "picker", standard_item_id: std.id, sort_order: 0,
+      deleted_at: null, updated_at: new Date().toISOString(), updated_by: currentUserId
+    };
+    state.items.push(item);
+    captureUndo("add", { itemId: item.id }, std.name);
+    await persistLocal();
+    await enqueue(item, "packing_items");
+    renderPicker();
+    render();
+    showPickerFeedback(`Added ${std.name}`);
+    syncNow();
   }
 
-  function closeStandardEditor() {
-    state.editingStandardId = null;
-    el.standardEditPopup.hidden = true;
-  }
-
-  async function onStandardFormSubmit(e) {
+  // Creating a catalogue entry from the picker's own search box: whatever
+  // you typed becomes the name, so a fruitless search flows straight into
+  // adding the thing you were looking for.
+  async function onPickerCreateSubmit(e) {
     e.preventDefault();
-    const name = normalizeName(el.standardNameInput.value);
+    const name = normalizeName(el.pickerFilterInput.value);
     if (!name) return;
 
-    const appliesTo = el.standardAppliesInput.value === "trip" ? "trip" : "person";
-    const duplicate = state.standardItems.find((s) => !s.deleted_at && s.id !== state.editingStandardId && canonicalKey(s.name) === canonicalKey(name) && s.applies_to === appliesTo);
-    if (duplicate) return showStandardFeedback(`${name} already exists`);
+    const duplicate = state.standardItems.find((s) => !s.deleted_at && canonicalKey(s.name) === canonicalKey(name));
+    if (duplicate) {
+      el.pickerFilterInput.value = "";
+      renderPicker();
+      return showPickerFeedback(`${name} is already in the list`);
+    }
 
-    const existing = state.editingStandardId ? state.standardItems.find((s) => s.id === state.editingStandardId) : null;
-    const std = existing || { id: crypto.randomUUID(), household_id: APP_CONFIG.householdId, sort_order: 9999, deleted_at: null };
-
-    std.name = name;
-    std.category = el.standardCategoryInput.value || "Other";
-    std.applies_to = appliesTo;
-    std.base_qty = clampInt(el.standardBaseInput.value, 0, 99, 1);
-    std.per_day = clampFloat(el.standardPerDayInput.value, 0, 10, 0);
-    std.max_qty = clampInt(el.standardMaxInput.value, 0, 99, 0);
-    std.seasons = readCheckboxGroup(el.standardSeasonsInput);
-    std.trip_types = readCheckboxGroup(el.standardTypesInput);
-    std.enabled = el.standardEnabledInput.checked;
-    std.mandatory = el.standardMandatoryInput.checked;
-    touch(std);
-
-    if (!existing) state.standardItems.push(std);
-
+    const std = {
+      id: crypto.randomUUID(),
+      household_id: APP_CONFIG.householdId,
+      name,
+      category: el.pickerCategoryInput.value || guessCategory(name) || "Other",
+      sort_order: 0,
+      deleted_at: null,
+      updated_at: new Date().toISOString()
+    };
+    state.standardItems.push(std);
     await persistLocal();
     await enqueue(std, "standard_items");
-    closeStandardEditor();
-    renderStandardList();
-    showStandardFeedback(`Saved ${name}`);
-    syncNow();
-  }
 
-  async function deleteEditedStandardItem() {
-    if (!state.editingStandardId) return;
-    const deleted = await deleteStandardItem(state.editingStandardId);
-    if (deleted) closeStandardEditor();
+    // A freshly created item is one you clearly want, so star it and put it
+    // straight on the list - otherwise creating it is three taps, not one.
+    await toggleFavourite(std.id);
+    await addStandardItemToList(std.id);
+
+    el.pickerFilterInput.value = "";
+    renderPicker();
+    showPickerFeedback(`Added ${name}`);
   }
 
   async function deleteStandardItem(id) {
     const std = state.standardItems.find((s) => s.id === id);
     if (!std) return false;
-    if (!confirm(`Delete the standard item "${std.name}"? Items already on a list are kept.`)) return false;
+    if (!confirm(`Remove "${std.name}" from the item list? Items already packed are kept.`)) return false;
 
     std.deleted_at = new Date().toISOString();
     touch(std);
     await persistLocal();
     await enqueue(std, "standard_items");
-    renderStandardList();
-    showStandardFeedback(`Deleted ${std.name}`);
+    renderPicker();
+    showPickerFeedback(`Deleted ${std.name}`);
     syncNow();
     return true;
   }
 
-  function showStandardFeedback(message) {
-    el.standardFeedback.textContent = message;
-    el.standardFeedback.hidden = false;
+  function showPickerFeedback(message) {
+    el.pickerFeedback.textContent = message;
+    el.pickerFeedback.hidden = false;
     clearTimeout(standardFeedbackTimer);
-    standardFeedbackTimer = setTimeout(() => { el.standardFeedback.hidden = true; }, 2000);
+    standardFeedbackTimer = setTimeout(() => { el.pickerFeedback.hidden = true; }, 2000);
   }
 
   // ---------------------------------------------------------------------
@@ -2328,7 +1872,7 @@
     } else if (action.type === "pack") {
       const item = state.items.find((i) => i.id === action.payload.itemId);
       if (item) { item.packed = action.payload.previous; item.packed_at = item.packed ? item.packed_at : null; touch(item); await enqueue(item, "packing_items"); }
-    } else if (action.type === "wizard") {
+    } else if (action.type === "bulkAdd") {
       for (const id of action.payload.itemIds) {
         const item = state.items.find((i) => i.id === id);
         if (!item) continue;
@@ -2396,15 +1940,16 @@
 
   async function pullAll() {
     const holidayId = state.holiday.id;
-    const [travellers, tripDaysRes, items, standards, meta] = await Promise.all([
+    const [travellers, tripDaysRes, items, standards, favourites, meta] = await Promise.all([
       apiSelect("travellers", { eq: { holiday_id: holidayId, household_id: APP_CONFIG.householdId }, is: { deleted_at: "null" } }),
       apiSelect("trip_days", { eq: { holiday_id: holidayId, household_id: APP_CONFIG.householdId }, is: { deleted_at: "null" } }),
       apiSelect("packing_items", { eq: { holiday_id: holidayId, household_id: APP_CONFIG.householdId }, is: { deleted_at: "null" } }),
       apiSelect("standard_items", { eq: { household_id: APP_CONFIG.householdId }, is: { deleted_at: "null" } }),
+      apiSelect("item_favourites", { eq: { household_id: APP_CONFIG.householdId }, is: { deleted_at: "null" } }),
       apiSelect("trip_meta", { eq: { holiday_id: holidayId } })
     ]);
 
-    const error = travellers.error || tripDaysRes.error || items.error || standards.error || meta.error;
+    const error = travellers.error || tripDaysRes.error || items.error || standards.error || favourites.error || meta.error;
     if (error) return { error };
 
     const pendingByTable = buildPendingPayloadMap();
@@ -2416,6 +1961,7 @@
     state.items = merged;
 
     state.standardItems = mergeById(state.standardItems, standards.data || [], pendingByTable.standard_items);
+    state.favourites = mergeById(state.favourites, favourites.data || [], pendingByTable.item_favourites);
 
     const remoteMeta = meta.data && meta.data[0];
     if (remoteMeta) {
@@ -2438,7 +1984,7 @@
   }
 
   function buildPendingPayloadMap() {
-    const map = { travellers: new Map(), trip_meta: new Map(), trip_days: new Map(), packing_items: new Map(), standard_items: new Map() };
+    const map = { travellers: new Map(), trip_meta: new Map(), trip_days: new Map(), packing_items: new Map(), standard_items: new Map(), item_favourites: new Map() };
     for (const op of state.pending) {
       const bucket = map[op.table];
       if (!bucket) continue;
@@ -2604,6 +2150,7 @@
     state.pending = (await idbGet(db, "state", idbKey("pending", holidayId))) || [];
     state.tripMeta = (await idbGet(db, "state", idbKey("tripMeta", holidayId))) || null;
     state.standardItems = (await idbGet(db, "state", "standardItems")) || [];
+    state.favourites = (await idbGet(db, "state", "favourites")) || [];
   }
 
   async function persistLocal() {
@@ -2616,6 +2163,7 @@
     await idbSet(db, "state", idbKey("pending", holidayId), state.pending);
     await idbSet(db, "state", idbKey("tripMeta", holidayId), state.tripMeta);
     await idbSet(db, "state", "standardItems", state.standardItems);
+    await idbSet(db, "state", "favourites", state.favourites);
   }
 
   let idbPromise = null;
@@ -2732,22 +2280,8 @@
     return values.map((v) => `<option value="${escapeHtml(v)}">${escapeHtml(v)}</option>`).join("");
   }
 
-  function checkboxGridHtml(name, values) {
-    return values.map((v) => `
-      <label class="switch-row">
-        <input type="checkbox" name="${name}" value="${escapeHtml(v)}" />
-        <span>${escapeHtml(v)}</span>
-      </label>`).join("");
-  }
 
-  function setCheckboxGroup(container, values) {
-    const set = new Set(values || []);
-    container.querySelectorAll("input[type=checkbox]").forEach((box) => { box.checked = set.has(box.value); });
-  }
 
-  function readCheckboxGroup(container) {
-    return Array.from(container.querySelectorAll("input[type=checkbox]")).filter((box) => box.checked).map((box) => box.value);
-  }
 
   function normalizeName(value) {
     const compact = (value || "").trim().replace(/\s+/g, " ");
@@ -2765,11 +2299,6 @@
     return Math.min(max, Math.max(min, n));
   }
 
-  function clampFloat(value, min, max, fallback) {
-    const n = Number(value);
-    if (!Number.isFinite(n)) return fallback;
-    return Math.min(max, Math.max(min, n));
-  }
 
   function escapeHtml(value) {
     return String(value ?? "").replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;").replaceAll('"', "&quot;");
