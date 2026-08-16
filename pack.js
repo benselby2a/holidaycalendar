@@ -65,6 +65,7 @@
     syncing: false,
     supabaseReachable: true,
     lastSyncError: "",
+    parkedWrites: [],
     lastSyncAt: null,
     lastAction: null,
     tab: "mine",
@@ -299,6 +300,8 @@
         <button id="pack-unpack-btn" class="icon-btn" type="button">Unpack Everything</button>
       </div>
 
+      <div id="pack-sync-banner" class="sync-banner" hidden></div>
+
       <div id="pack-loading" class="pack-loading">
         <div class="spinner" aria-label="Loading"></div>
       </div>
@@ -481,6 +484,7 @@
     el.paneEveryone = q("pack-pane-everyone");
     el.listOptionsBtn = q("pack-list-options-btn");
     el.listOptionsMenu = q("pack-list-options-menu");
+    el.syncBanner = q("pack-sync-banner");
     el.removeAllBtn = q("pack-remove-all-btn");
     el.addItemsBtn = q("pack-add-items-btn");
     el.databaseBtn = q("pack-database-btn");
@@ -643,6 +647,9 @@
   function render() {
     el.undoBtn.disabled = !state.lastAction;
     el.undoBtn.textContent = state.lastAction ? `Undo ${state.lastAction.label}` : "Undo";
+    // Before the early return, so a sync problem still shows on a trip that
+    // failed to load - which is exactly when you most need to see it.
+    renderSyncBanner();
 
     const trip = currentTrip();
     if (!trip) return;
@@ -737,6 +744,20 @@
       if (std) return Boolean(std.shared);
     }
     return item.scope === "shared";
+  }
+
+  // lastSyncError was computed in two places and rendered nowhere, so a
+  // device could sit for days failing every write with no outward sign -
+  // which is exactly how the queue silently wedged. Surface it.
+  function renderSyncBanner() {
+    if (!el.syncBanner) return;
+    const parked = state.parkedWrites.length;
+    const message = parked
+      ? `${parked} change${parked === 1 ? "" : "s"} couldn't be saved to the server — see the browser console`
+      : state.lastSyncError;
+    el.syncBanner.hidden = !message;
+    el.syncBanner.textContent = message || "";
+    el.syncBanner.classList.toggle("is-hard", parked > 0);
   }
 
   function renderMine() {
@@ -2221,16 +2242,34 @@
     if (!db || state.syncing || !state.holiday) return;
     state.syncing = true;
 
+    // The queue used to stop dead on the first failing op. Because enqueue()
+    // freezes each payload at enqueue time, a row queued against an older
+    // schema stays broken forever - and every later write sat behind it, so
+    // nothing reached the server at all while the local cache kept looking
+    // fine (mergeById retains pending rows). Payload-shaped failures are now
+    // parked so the rest of the queue drains; only genuinely retryable
+    // failures (offline, auth, server error) still stop the pass.
+    const parked = [];
     while (state.pending.length) {
       const index = findNextPendingIndex();
       const op = state.pending[index];
       const { error } = await apiUpsert(op.table, op.payload);
       if (error) {
+        if (isUnsendable(error)) {
+          parked.push({ table: op.table, id: op.payload?.id, error: error.message });
+          state.pending.splice(index, 1);
+          await persistLocal();
+          continue;
+        }
         state.lastSyncError = `sync failed: ${error.message}`;
         break;
       }
       state.pending.splice(index, 1);
       await persistLocal();
+    }
+    if (parked.length) {
+      state.parkedWrites = [...state.parkedWrites, ...parked];
+      console.warn("packing: parked unsendable writes", parked);
     }
 
     const pulled = await pullAll();
@@ -2286,6 +2325,13 @@
     }
 
     return { error: null };
+  }
+
+  // 400/404/409/422 mean the payload itself is wrong for the current schema:
+  // retrying is pointless and blocks everything behind it. Anything else -
+  // offline, 401, 5xx - is worth another pass later.
+  function isUnsendable(error) {
+    return [400, 404, 409, 422].includes(error?.status);
   }
 
   function findNextPendingIndex() {
@@ -2441,7 +2487,7 @@
       if (text) {
         try { data = JSON.parse(text); } catch { data = null; }
       }
-      if (!res.ok) return { data: null, error: { message: data?.message || data?.error || `${res.status} ${res.statusText}` } };
+      if (!res.ok) return { data: null, error: { message: data?.message || data?.error || `${res.status} ${res.statusText}`, status: res.status } };
       return { data, error: null };
     } catch (err) {
       return { data: null, error: { message: err?.message || "network error" } };
