@@ -636,6 +636,55 @@ function hideCompletedAppliesToYear(year) {
   return state.hideCompleted && year >= new Date().getFullYear();
 }
 
+function mapHolidayRow(h) {
+  return {
+    id: h.id,
+    location: h.location,
+    country: h.country || "",
+    startDate: h.start_date,
+    endDate: h.end_date,
+    startHalf: h.start_half || "am",
+    endHalf: h.end_half || "pm",
+    daysOffWork: Number(h.days_off_work ?? h.days),
+    status: (String(h.status || "").toLowerCase() === "ideation") ? "planning" : (h.status || "planning"),
+    peopleDays: h.people_days || {},
+  };
+}
+
+// Re-fetches just one calendar year of holidays (matching holidayYear()'s own
+// definition: the year of start_date) and splices it into state.holidays,
+// rather than reloading everything. Adding, editing or deleting a trip only
+// ever changes rows within one or two years, but the old reload pulled all
+// 80+ holidays plus people/allowances/bank-holidays every time - none of
+// which an edit to a single trip actually changes.
+//
+// The full array is kept, not replaced: renderCountryMap() needs every
+// year's holidays to know which countries were visited "in the past" versus
+// "this year" versus "due", so a holiday edit can never narrow state.holidays
+// down to one year - it can only refresh one year's slice of it.
+//
+// On failure this deliberately leaves state.holidays as it was rather than
+// clearing anything, so a flaky request degrades to "shows slightly stale
+// data" instead of "shows nothing for a whole year".
+async function reloadHolidaysForYear(year) {
+  const { data, error } = await db
+    .from("holidays")
+    .select("*")
+    .gte("start_date", `${year}-01-01`)
+    .lt("start_date", `${year + 1}-01-01`)
+    .order("start_date", { ascending: true });
+  if (error) {
+    setStatusMessage(`Could not refresh ${year}'s holidays: ${error.message}`, true);
+    return;
+  }
+  const kept = state.holidays.filter((h) => holidayYear(h) !== year);
+  const fresh = (data || []).map(mapHolidayRow);
+  // Re-sort rather than append: renderHolidayTable() relies on state.holidays
+  // already being start_date order (it never sorts holidaysForYear() itself),
+  // and the merge above doesn't preserve that on its own.
+  state.holidays = [...kept, ...fresh].sort((a, b) => (a.startDate < b.startDate ? -1 : a.startDate > b.startDate ? 1 : 0));
+}
+
 async function loadData() {
   showPageLoading();
   try {
@@ -678,18 +727,7 @@ async function loadData() {
     state.peopleNames = Array.from(new Set([...directoryNames, ...fallbackNames])).sort((a, b) => a.localeCompare(b));
     state.people = allPeopleRows.filter((p) => p.allowanceYear === state.year || Number.isNaN(p.allowanceYear));
 
-    state.holidays = (holidaysRes.data || []).map((h) => ({
-      id: h.id,
-      location: h.location,
-      country: h.country || "",
-      startDate: h.start_date,
-      endDate: h.end_date,
-      startHalf: h.start_half || "am",
-      endHalf: h.end_half || "pm",
-      daysOffWork: Number(h.days_off_work ?? h.days),
-      status: (String(h.status || "").toLowerCase() === "ideation") ? "planning" : (h.status || "planning"),
-      peopleDays: h.people_days || {},
-    }));
+    state.holidays = (holidaysRes.data || []).map(mapHolidayRow);
     state.bankHolidays = (bankHolidaysRes.data || []).map((h) => ({
       id: h.id,
       holidayYear: Number(h.holiday_year),
@@ -2495,7 +2533,7 @@ if (el.holidayForm) el.holidayForm.addEventListener("submit", async (e) => {
       status: safeStatus,
       people_days: peopleDays,
     });
-    await loadData();
+    await reloadHolidaysForYear(new Date(startDate).getFullYear());
     render();
     if (formEl && typeof formEl.reset === "function") formEl.reset();
     formEl.dataset.endDateManual = "false";
@@ -2725,6 +2763,9 @@ if (el.editHolidayForm) el.editHolidayForm.addEventListener("submit", async (e) 
   const peopleDays = {};
   for (const name of selected) peopleDays[name] = Number(daysOffWork.toFixed(2));
 
+  const previousHoliday = state.holidays.find((h) => String(h.id) === String(id));
+  const previousYear = previousHoliday ? new Date(previousHoliday.startDate).getFullYear() : null;
+
   try {
     await updateHoliday(id, {
       location,
@@ -2738,7 +2779,9 @@ if (el.editHolidayForm) el.editHolidayForm.addEventListener("submit", async (e) 
       status: safeStatus,
       people_days: peopleDays,
     });
-    await loadData();
+    const nextYear = new Date(startDate).getFullYear();
+    if (previousYear !== null && previousYear !== nextYear) await reloadHolidaysForYear(previousYear);
+    await reloadHolidaysForYear(nextYear);
     render();
     closeEditHolidayModal();
     setStatusMessage(`Updated holiday: ${location}.`);
@@ -2754,9 +2797,10 @@ if (el.removeHoliday) el.removeHoliday.addEventListener("click", async () => {
   if (!id) return;
   const ok = window.confirm("Remove this trip? This cannot be undone.");
   if (!ok) return;
+  const removedYear = state.holidays.find((h) => String(h.id) === String(id))?.startDate;
   try {
     await deleteHoliday(id);
-    await loadData();
+    if (removedYear) await reloadHolidaysForYear(new Date(removedYear).getFullYear());
     render();
     closeEditHolidayModal();
     setStatusMessage("Trip removed.");
