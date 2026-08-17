@@ -6,8 +6,8 @@
 -- so the Packing Wizard just offers each item once per traveller; per-day
 -- scaling can be set later per item from Item Database if wanted.
 --
--- One entry was left out on purpose: [redacted] was a one-off
--- note tied to a specific past trip, not a reusable item template.
+-- One entry was left out on purpose: a one-off note tied to a specific
+-- past trip, not a reusable item template.
 -- Two names were cleaned up: "Drugs" -> "Medication", "Colin caterpillars"
 -- -> "Colin the Caterpillar" (the M&S cake).
 --
