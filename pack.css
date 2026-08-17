@@ -323,6 +323,8 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 }
 .pack-screen .check-box {
   flex: none;
+  align-self: flex-start;
+  margin-top: 1px;
   width: 22px;
   height: 22px;
   border: 1px solid var(--border);
@@ -334,11 +336,13 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   color: #fff;
   background: var(--surface-raised);
 }
-.pack-screen .item-name { min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
+.pack-screen .item-name { flex: 1; min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
 .pack-screen .is-packed .item-name { text-decoration: line-through; color: var(--muted); }
 .pack-screen .is-packed .check-box { background: var(--brand); border-color: var(--brand); }
 .pack-screen .qty-badge {
   flex: none;
+  align-self: flex-start;
+  margin-top: 2px;
   font-size: 0.7rem;
   font-weight: 700;
   color: var(--brand);
