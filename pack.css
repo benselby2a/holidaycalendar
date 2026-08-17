@@ -364,11 +364,11 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
    enough to survive alongside the quantity controls at phone widths. */
 .pack-screen .owner-select {
   width: auto;
-  min-width: 88px;
+  min-width: 76px;
   min-height: 32px;
   height: 32px;
-  padding: 2px 20px 2px 7px;
-  font-size: 0.76rem;
+  padding: 2px 18px 2px 6px;
+  font-size: 0.74rem;
 }
 /* Unclaimed shared items should be obvious at a glance. */
 .pack-screen .owner-select.is-unassigned { color: var(--warn); border-color: var(--warn); font-weight: 700; }
@@ -808,7 +808,7 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 @media (max-width: 900px) {
   .pack-screen .pack-main { padding: 10px 10px 96px; }
   .pack-screen .form-row { flex-direction: column; }
-  .pack-screen .item-actions .owner-select { min-width: 80px; }
+  .pack-screen .item-actions .owner-select { min-width: 72px; }
 }
 
 /* At phone widths the search box, category select and Add New button don't
@@ -822,11 +822,8 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 }
 
 @media (max-width: 420px) {
-  /* Too much for one line once the Clothes presets are in play, so the
-     assignment control takes its own row under the item instead of being
-     hidden - which is what it used to do, leaving no way to reassign at all
-     on a phone. order keeps the buttons on the first line with the name. */
-  .pack-screen .item-row .owner-select { flex: 1 0 100%; order: 2; min-height: 34px; margin-top: 2px; }
-  .pack-screen .item-row .item-actions { order: 1; margin-left: auto; }
+  /* Inline alongside the row. The Clothes presets are suppressed on the
+     Shared tab, which is what frees the width for it here. */
+  .pack-screen .item-row .owner-select { min-width: 64px; font-size: 0.7rem; padding: 2px 16px 2px 5px; }
   .pack-screen .db-actions .icon-btn { min-width: 90px; }
 }

@@ -901,7 +901,7 @@
             : `<div class="item-actions">
                  <button class="qty-btn" type="button" data-qty-down="${item.id}" aria-label="Decrease quantity">−</button>
                  <button class="qty-btn" type="button" data-qty-up="${item.id}" aria-label="Increase quantity">+</button>
-                 ${qtyPresetButtonsHtml(item)}
+                 ${qtyPresetButtonsHtml(item, opts)}
                  ${sharedToggleHtml(item)}
                  <button class="delete-btn" type="button" data-delete-item="${item.id}" aria-label="Delete item">✕</button>
                </div>`
@@ -945,7 +945,11 @@
     syncNow();
   }
 
-  function qtyPresetButtonsHtml(item) {
+  function qtyPresetButtonsHtml(item, opts = {}) {
+    // Not on the Shared tab: these scale a *per-person* clothing count with
+    // trip length, which doesn't mean anything for the trip's single shared
+    // copy - and their width is better spent on the assignee dropdown there.
+    if (opts.showOwner) return "";
     // Only Clothes scale with trip length - you want a pair of socks per day,
     // but never ten tents. Matches on the same normalised category the
     // section grouping uses, so the buttons appear exactly under the
