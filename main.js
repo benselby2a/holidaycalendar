@@ -644,13 +644,18 @@ async function loadData() {
       return;
     }
 
-    let peopleDirectoryRes = await db.from("people").select("*").order("name", { ascending: true });
+    // These four don't depend on each other, so fire them together instead
+    // of one after another - four sequential round trips became one wait for
+    // the slowest of the four.
+    let [peopleDirectoryRes, peopleRes, holidaysRes, bankHolidaysRes] = await Promise.all([
+      db.from("people").select("*").order("name", { ascending: true }),
+      db.from("people_allowance").select("*").order("name", { ascending: true }),
+      db.from("holidays").select("*").order("start_date", { ascending: true }),
+      db.from("bank_holidays").select("*").order("holiday_date", { ascending: true }),
+    ]);
     if (peopleDirectoryRes.error && (String(peopleDirectoryRes.error.code) === "42P01" || String(peopleDirectoryRes.error.code) === "PGRST204")) {
       peopleDirectoryRes = { data: [], error: null };
     }
-    let peopleRes = await db.from("people_allowance").select("*").order("name", { ascending: true });
-    const holidaysRes = await db.from("holidays").select("*").order("start_date", { ascending: true });
-    let bankHolidaysRes = await db.from("bank_holidays").select("*").order("holiday_date", { ascending: true });
     if (bankHolidaysRes.error && (String(bankHolidaysRes.error.code) === "PGRST204" || String(bankHolidaysRes.error.code) === "42P01" || String(bankHolidaysRes.error.code) === "42703")) {
       bankHolidaysRes = { data: [], error: null };
     }
