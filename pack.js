@@ -43,10 +43,23 @@
   // signed-in Supabase Auth email to a traveller name so opening a trip
   // defaults "I am" to whoever is actually logged in, without having to
   // reselect it every time.
-  const KNOWN_USER_NAMES = {
-    "[redacted-email-1]": "Ben",
-    "[redacted-email-2]": "Louise"
+  //
+  // Keyed by SHA-256(lowercased email), not the email itself - this file is
+  // served as plain public JS with no backend, so anything here is
+  // world-readable. A hash can't be reversed by a scraper trawling GitHub
+  // for "@" patterns the way a plaintext address can; it only maps back to
+  // an email you already know to check (which is the honest limit of doing
+  // this without a server-side lookup).
+  const KNOWN_USER_NAME_HASHES = {
+    "769c33b9d21cd3bd51440d56b81525056fcac12504868994924c764dcc140314": "Ben",
+    "5ded2a2c9a219272d95f9c43205feef22a1170e2561644c6c32a29b1faf2408c": "Louise"
   };
+
+  async function sha256Hex(text) {
+    const bytes = new TextEncoder().encode(text);
+    const digest = await crypto.subtle.digest("SHA-256", bytes);
+    return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
+  }
 
   let currentUserId = null;
   let currentUserEmail = null;
@@ -186,13 +199,13 @@
     currentUserEmail = (session?.user?.email || "").toLowerCase();
   }
 
-  function inferredTravellerName() {
+  async function inferredTravellerName() {
     if (!currentUserEmail) return null;
-    return KNOWN_USER_NAMES[currentUserEmail] || null;
+    return KNOWN_USER_NAME_HASHES[await sha256Hex(currentUserEmail)] || null;
   }
 
   // "I am" is never picked by hand — it's derived from the signed-in
-  // account (KNOWN_USER_NAMES) and, if that traveller isn't on this trip
+  // account (KNOWN_USER_NAME_HASHES) and, if that traveller isn't on this trip
   // yet, created automatically. Must only be called after syncNow() has
   // resolved at least once: creating a traveller here means "confirmed via
   // the server that they don't already exist on this trip", and calling it
@@ -200,7 +213,7 @@
   // of a traveller that already exists remotely (e.g. a brand new device,
   // opened offline, for a trip someone else already set up).
   async function inferWhoami() {
-    const inferredName = inferredTravellerName();
+    const inferredName = await inferredTravellerName();
 
     if (inferredName) {
       const existing = tripTravellers(state.holiday.id).find((p) => canonicalKey(p.name) === canonicalKey(inferredName));
