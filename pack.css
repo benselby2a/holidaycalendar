@@ -303,19 +303,21 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .section-count { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
 
 .pack-screen .item-list { list-style: none; margin: 0; padding: 0; }
-.pack-screen .item-row { display: flex; align-items: center; gap: 6px; border-top: 1px solid var(--border); padding: 4px 0; }
+.pack-screen .item-row { display: flex; align-items: center; gap: 3px; border-top: 1px solid var(--border); padding: 4px 0; }
 .pack-screen .item-row:first-child { border-top: none; }
 .pack-screen .item-main-btn {
   flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   background: none;
   border: none;
   color: var(--text);
   text-align: left;
   padding: 8px 2px;
   min-height: 44px;
+  font-size: 0.92rem;
   cursor: pointer;
   min-width: 0;
 }
@@ -332,12 +334,12 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   color: #fff;
   background: var(--surface-raised);
 }
-.pack-screen .item-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pack-screen .item-name { min-width: 0; white-space: normal; overflow-wrap: anywhere; line-height: 1.25; }
 .pack-screen .is-packed .item-name { text-decoration: line-through; color: var(--muted); }
 .pack-screen .is-packed .check-box { background: var(--brand); border-color: var(--brand); }
 .pack-screen .qty-badge {
   flex: none;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 700;
   color: var(--brand);
   background: var(--brand-soft);
@@ -353,24 +355,11 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   border-radius: 999px;
   padding: 2px 7px;
 }
-/* Distinct from .owner-tag (a plain grey pill for a person's name): this
-   marks the trip's single shared copy showing up on someone's own list. */
-.pack-screen .shared-tag {
-  flex: none;
-  font-size: 0.7rem;
-  font-weight: 700;
-  color: var(--brand);
-  background: var(--brand-soft);
-  border: 1px solid transparent;
-  border-radius: 999px;
-  padding: 2px 7px;
-  white-space: nowrap;
-}
-.pack-screen .item-actions { display: flex; align-items: center; gap: 4px; flex: none; }
+.pack-screen .item-actions { display: flex; align-items: center; gap: 3px; flex: none; }
 .pack-screen .owner-select { width: auto; min-width: 104px; min-height: 36px; padding: 4px 24px 4px 8px; font-size: 0.8rem; }
 .pack-screen .qty-btn {
-  width: 32px;
-  height: 36px;
+  width: 28px;
+  height: 32px;
   min-height: 0;
   padding: 0;
   border: 1px solid var(--border);
@@ -381,8 +370,8 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   cursor: pointer;
 }
 .pack-screen .delete-btn {
-  width: 32px;
-  height: 36px;
+  width: 26px;
+  height: 32px;
   min-height: 0;
   padding: 0;
   border: 1px solid var(--border);
@@ -726,7 +715,7 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 
 /* The per-item shared toggle sits in the same 32x36 box as the other row
    buttons; the on-state matches the Item Database's shared pill. */
-.pack-screen .shared-toggle-btn { font-size: 0.82rem; }
+.pack-screen .shared-toggle-btn { font-size: 0.74rem; }
 .pack-screen .shared-toggle-btn.is-on { border-color: var(--brand); background: var(--brand-soft); }
 
 /* Trip-length shortcuts on each item row - deliberately smaller and flatter
@@ -734,15 +723,15 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
    way to change a quantity. */
 .pack-screen .qty-preset-btn {
   flex: none;
-  width: 32px;
-  height: 36px;
+  width: 26px;
+  height: 32px;
   min-height: 0;
   padding: 0;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-raised);
   color: var(--brand);
-  font-size: 0.8rem;
+  font-size: 0.72rem;
   font-weight: 700;
   cursor: pointer;
 }
