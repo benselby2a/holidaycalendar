@@ -874,8 +874,9 @@
     const people = tripTravellers(item.holiday_id);
     const ownerSelect =
       opts.showOwner && !opts.compact
-        ? `<select class="owner-select" data-owner-for="${item.id}" aria-label="Owner">
-             <option value="">Unassigned</option>
+        ? `<select class="owner-select${item.traveller_id ? "" : " is-unassigned"}" data-owner-for="${item.id}"
+             aria-label="Who is packing ${escapeHtml(item.name)}">
+             <option value="">Nobody</option>
              ${people.map((t) => `<option value="${t.id}"${t.id === item.traveller_id ? " selected" : ""}>${escapeHtml(t.name)}</option>`).join("")}
            </select>`
         : "";
@@ -893,11 +894,11 @@
           <span class="qty-badge">×${item.quantity}</span>
           ${ownerTag}
         </button>
+        ${ownerSelect}
         ${
           opts.compact
             ? ""
             : `<div class="item-actions">
-                 ${ownerSelect}
                  <button class="qty-btn" type="button" data-qty-down="${item.id}" aria-label="Decrease quantity">−</button>
                  <button class="qty-btn" type="button" data-qty-up="${item.id}" aria-label="Increase quantity">+</button>
                  ${qtyPresetButtonsHtml(item)}
