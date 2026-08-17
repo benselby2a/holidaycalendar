@@ -303,7 +303,7 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .section-count { font-size: 0.78rem; color: var(--muted); font-weight: 600; }
 
 .pack-screen .item-list { list-style: none; margin: 0; padding: 0; }
-.pack-screen .item-row { display: flex; align-items: center; gap: 3px; border-top: 1px solid var(--border); padding: 4px 0; }
+.pack-screen .item-row { display: flex; flex-wrap: wrap; align-items: center; gap: 3px; border-top: 1px solid var(--border); padding: 4px 0; }
 .pack-screen .item-row:first-child { border-top: none; }
 .pack-screen .item-main-btn {
   flex: 1;
@@ -356,7 +356,18 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
   padding: 2px 7px;
 }
 .pack-screen .item-actions { display: flex; align-items: center; gap: 3px; flex: none; }
-.pack-screen .owner-select { width: auto; min-width: 104px; min-height: 36px; padding: 4px 24px 4px 8px; font-size: 0.8rem; }
+/* Assigning a shared item is done here, inline on the row - keep it compact
+   enough to survive alongside the quantity controls at phone widths. */
+.pack-screen .owner-select {
+  width: auto;
+  min-width: 88px;
+  min-height: 32px;
+  height: 32px;
+  padding: 2px 20px 2px 7px;
+  font-size: 0.76rem;
+}
+/* Unclaimed shared items should be obvious at a glance. */
+.pack-screen .owner-select.is-unassigned { color: var(--warn); border-color: var(--warn); font-weight: 700; }
 .pack-screen .qty-btn {
   width: 28px;
   height: 32px;
@@ -793,7 +804,7 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 @media (max-width: 900px) {
   .pack-screen .pack-main { padding: 10px 10px 96px; }
   .pack-screen .form-row { flex-direction: column; }
-  .pack-screen .item-actions .owner-select { min-width: 88px; }
+  .pack-screen .item-actions .owner-select { min-width: 80px; }
 }
 
 /* At phone widths the search box, category select and Add New button don't
@@ -807,6 +818,11 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 }
 
 @media (max-width: 420px) {
-  .pack-screen .item-actions .owner-select { display: none; }
+  /* Too much for one line once the Clothes presets are in play, so the
+     assignment control takes its own row under the item instead of being
+     hidden - which is what it used to do, leaving no way to reassign at all
+     on a phone. order keeps the buttons on the first line with the name. */
+  .pack-screen .item-row .owner-select { flex: 1 0 100%; order: 2; min-height: 34px; margin-top: 2px; }
+  .pack-screen .item-row .item-actions { order: 1; margin-left: auto; }
   .pack-screen .db-actions .icon-btn { min-width: 90px; }
 }
