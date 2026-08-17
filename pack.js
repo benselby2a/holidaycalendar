@@ -883,7 +883,7 @@
       opts.showOwner && opts.compact
         ? `<span class="owner-tag">${escapeHtml(travellerName(item.traveller_id) || "Unassigned")}</span>`
         : "";
-    const sharedTag = isShared(item) && !opts.showOwner ? `<span class="shared-tag">👥 Shared</span>` : "";
+
 
     return `
       <li class="item-row${item.packed ? " is-packed" : ""}">
@@ -891,7 +891,6 @@
           <span class="check-box">${item.packed ? "✓" : ""}</span>
           <span class="item-name">${escapeHtml(item.name)}</span>
           <span class="qty-badge">×${item.quantity}</span>
-          ${sharedTag}
           ${ownerTag}
         </button>
         ${
