@@ -1737,7 +1737,7 @@ function renderCountryMap() {
       .join("");
     el.countryMap.innerHTML = `
       <div class="country-map-wrap">
-        <p class="country-map-summary"></p>
+        <div class="country-map-summary"></div>
         <div class="country-map-svg-wrap">
           <svg class="country-map-svg" viewBox="0 0 ${WORLD_MAP_W} ${WORLD_MAP_H}" preserveAspectRatio="xMidYMid meet" role="img">
             ${pathsMarkup}
@@ -1885,11 +1885,19 @@ function renderCountryMap() {
   // track which colors are actually on the map right now, so the legend only
   // lists entries that apply instead of always showing all of them.
   let visitedCount = 0;
+  let visitedThisYearCount = 0;
   let dueCount = 0;
   const categoriesPresent = new Set();
-  for (const entry of statusByCountry.values()) {
+  for (const [mapName, entry] of statusByCountry.entries()) {
     const cats = categoriesFor(entry);
-    if (cats.includes("past") || cats.includes("current")) visitedCount += 1;
+    // Home country - living there isn't "visiting" it, so it's excluded from
+    // both visited tallies. Left in for "due", on the off chance a UK entry
+    // ever ends up there; there's nothing to exclude it from that means.
+    const isHome = normalizeMapCountryName(mapName) === "united kingdom";
+    if (!isHome) {
+      if (cats.includes("past") || cats.includes("current")) visitedCount += 1;
+      if (cats.includes("current")) visitedThisYearCount += 1;
+    }
     if (cats.includes("due")) dueCount += 1;
     const effective = effectiveCategory(cats);
     if (effective) categoriesPresent.add(effective);
@@ -1910,7 +1918,23 @@ function renderCountryMap() {
 
   const summaryEl = el.countryMap.querySelector(".country-map-summary");
   if (summaryEl) {
-    summaryEl.innerHTML = `<strong>${visitedCount}</strong> ${visitedCount === 1 ? "country" : "countries"} visited up to ${year}${dueCount ? `, <strong>${dueCount}</strong> more due` : ""}`;
+    // UK excluded from both visited tallies above (see the loop) since living
+    // there isn't "visiting" it - not excluded from "due" here, there's
+    // nothing that would put it there in the first place.
+    summaryEl.innerHTML = `
+      <div class="country-map-stat">
+        <span class="country-map-stat-value">${visitedCount}</span>
+        <span class="country-map-stat-label">${visitedCount === 1 ? "country" : "countries"} visited</span>
+      </div>
+      <div class="country-map-stat">
+        <span class="country-map-stat-value">${visitedThisYearCount}</span>
+        <span class="country-map-stat-label">visited in ${year}</span>
+      </div>
+      <div class="country-map-stat">
+        <span class="country-map-stat-value">${dueCount}</span>
+        <span class="country-map-stat-label">due to visit</span>
+      </div>
+    `;
   }
 }
 

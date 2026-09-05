@@ -1209,6 +1209,43 @@ tr:hover { background: var(--table-hover); }
 
 .country-map-wrap { margin-top: 12px; }
 
+.country-map-summary {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.country-map-stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 10px 6px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--card);
+  text-align: center;
+}
+
+.country-map-stat-value {
+  font-size: 1.4rem;
+  font-weight: 700;
+  color: var(--accent);
+  line-height: 1.1;
+}
+
+.country-map-stat-label {
+  font-size: 0.72rem;
+  color: var(--muted);
+}
+
+@media (max-width: 480px) {
+  .country-map-summary { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .country-map-stat { padding: 8px 4px; }
+  .country-map-stat-value { font-size: 1.15rem; }
+  .country-map-stat-label { font-size: 0.66rem; }
+}
+
 .map-loading {
   display: flex;
   flex-direction: column;
