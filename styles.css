@@ -440,6 +440,70 @@ button.danger {
   gap: 6px;
 }
 
+/* ── Multi-country picker (additional countries on a trip) ───── */
+
+.country-multi {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--card);
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  min-height: 0;
+  padding: 0;
+  border: none;
+  border-radius: 999px;
+  background: var(--input-bg);
+  color: var(--muted);
+  font-size: 0.7rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.chip-remove:hover {
+  background: var(--warn);
+  color: #fff;
+  transform: none;
+}
+
+.country-multi-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.country-multi-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.country-multi-input-row button {
+  flex: none;
+}
+
 /* ── Half-day toggle ───────────────── */
 
 .half-toggle {

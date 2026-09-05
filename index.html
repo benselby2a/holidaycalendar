@@ -7,7 +7,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="./icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=20260808-5" />
+    <link rel="stylesheet" href="styles.css?v=20260905-1" />
     <link rel="stylesheet" href="pack.css?v=20260816-19" />
     <script>
       if (window !== window.parent) {
@@ -158,6 +158,8 @@
       </div>
     </div>
 
+    <datalist id="recognized-countries-list"></datalist>
+
     <div id="add-holiday-modal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="holiday-heading">
       <div class="modal-card">
         <div class="panel-head">
@@ -175,6 +177,16 @@
               <select name="country" id="add-country" required></select>
             </label>
           </div>
+          <label class="full-width">
+            Additional countries (optional)
+            <div class="country-multi">
+              <div id="add-countries-chips" class="chip-row"></div>
+              <div class="country-multi-input-row">
+                <input type="text" id="add-countries-input" list="recognized-countries-list" placeholder="Add another country" autocomplete="off" />
+                <button type="button" id="add-countries-add-btn">Add</button>
+              </div>
+            </div>
+          </label>
           <div class="form-row halfday-row">
             <label>
               Start date
@@ -247,6 +259,16 @@
               <select name="country" id="edit-country" required></select>
             </label>
           </div>
+          <label class="full-width">
+            Additional countries (optional)
+            <div class="country-multi">
+              <div id="edit-countries-chips" class="chip-row"></div>
+              <div class="country-multi-input-row">
+                <input type="text" id="edit-countries-input" list="recognized-countries-list" placeholder="Add another country" autocomplete="off" />
+                <button type="button" id="edit-countries-add-btn">Add</button>
+              </div>
+            </div>
+          </label>
           <div class="form-row halfday-row">
             <label>
               Start date
@@ -336,7 +358,7 @@
     </template>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" crossorigin="anonymous"></script>
-    <script src="main.js?v=20260817-2"></script>
+    <script src="main.js?v=20260905-1"></script>
     <script src="pack.js?v=20260817-1"></script>
   </body>
 </html>

@@ -258,6 +258,13 @@ const el = {
   allowanceSummary: document.getElementById("allowance-summary"),
   addCountry: document.getElementById("add-country"),
   editCountry: document.getElementById("edit-country"),
+  recognizedCountriesList: document.getElementById("recognized-countries-list"),
+  addCountriesChips: document.getElementById("add-countries-chips"),
+  addCountriesInput: document.getElementById("add-countries-input"),
+  addCountriesAddBtn: document.getElementById("add-countries-add-btn"),
+  editCountriesChips: document.getElementById("edit-countries-chips"),
+  editCountriesInput: document.getElementById("edit-countries-input"),
+  editCountriesAddBtn: document.getElementById("edit-countries-add-btn"),
   holidayHeatmap: document.getElementById("holiday-heatmap"),
   holidayBurndown: document.getElementById("holiday-burndown"),
   holidayTodos: document.getElementById("holiday-todos"),
@@ -341,6 +348,48 @@ function inferCountryFromLocation(locationText) {
     if (text.includes(countryLc) || countryLc.includes(text)) return country;
   }
   return null;
+}
+
+function populateRecognizedCountriesDatalist() {
+  if (!el.recognizedCountriesList) return;
+  el.recognizedCountriesList.innerHTML = RECOGNIZED_COUNTRIES.map((c) => `<option value="${c}"></option>`).join("");
+}
+
+// ── Additional countries on a trip ─────────────────────────────────────────
+// The primary <select> stays the "main" country - it drives country
+// inference from the location text and is what packing_list (a separate app)
+// reads as the single country. Anything beyond that lives here as a plain
+// array per form; only one of the add/edit modals is ever open at a time, so
+// there's no need for anything fancier than one array per form.
+let addExtraCountries = [];
+let editExtraCountries = [];
+
+function renderCountryChips(chipsEl, countries) {
+  if (!chipsEl) return;
+  chipsEl.innerHTML = countries
+    .map((c) => `<span class="chip">${c}<button type="button" class="chip-remove" data-country="${c}" aria-label="Remove ${c}">✕</button></span>`)
+    .join("");
+}
+
+function addExtraCountry(list, chipsEl, primarySelect, rawValue) {
+  const value = String(rawValue || "").trim();
+  if (!value) return list;
+  // Case-insensitive match against the canonical list, so typing "france"
+  // still resolves to "France" instead of being silently rejected or added
+  // under the wrong casing.
+  const canonical = RECOGNIZED_COUNTRIES.find((c) => c.toLowerCase() === value.toLowerCase());
+  if (!canonical) return list;
+  const primary = primarySelect?.value || "";
+  if (canonical === primary || list.includes(canonical)) return list;
+  const next = [...list, canonical];
+  renderCountryChips(chipsEl, next);
+  return next;
+}
+
+function removeExtraCountry(list, chipsEl, value) {
+  const next = list.filter((c) => c !== value);
+  renderCountryChips(chipsEl, next);
+  return next;
 }
 
 window.addEventListener("error", (evt) => {
@@ -641,6 +690,9 @@ function mapHolidayRow(h) {
     id: h.id,
     location: h.location,
     country: h.country || "",
+    // Falls back to the single country for a row saved before this column
+    // existed, or one written by a stale client that only sent `country`.
+    countries: Array.isArray(h.countries) && h.countries.length ? h.countries : (h.country ? [h.country] : []),
     startDate: h.start_date,
     endDate: h.end_date,
     startHalf: h.start_half || "am",
@@ -1616,19 +1668,26 @@ function renderCountryMap() {
   // aren't categorized — "due" only reflects what's due within the year being viewed.
   const statusByCountry = new Map();
   for (const h of state.holidays) {
-    const country = String(h.country || "").trim();
-    if (!country) continue;
-    const mapName = matchCountryToMapName(country, state.worldMapNameIndex);
-    if (!mapName) continue;
+    // A trip spanning several countries counts toward every one of them -
+    // each gets its own map entry, all sharing this trip's same past/
+    // current/due classification and the same trips-list line.
+    const countries = (h.countries && h.countries.length ? h.countries : [h.country])
+      .map((c) => String(c || "").trim())
+      .filter(Boolean);
+    if (!countries.length) continue;
     const hYear = holidayYear(h);
-    const entry = statusByCountry.get(mapName) || { past: false, current: false, due: false, trips: [] };
-    if (hYear < year) entry.past = true;
-    else if (hYear === year) {
-      if (h.startDate <= today) entry.current = true;
-      else entry.due = true;
+    for (const country of countries) {
+      const mapName = matchCountryToMapName(country, state.worldMapNameIndex);
+      if (!mapName) continue;
+      const entry = statusByCountry.get(mapName) || { past: false, current: false, due: false, trips: [] };
+      if (hYear < year) entry.past = true;
+      else if (hYear === year) {
+        if (h.startDate <= today) entry.current = true;
+        else entry.due = true;
+      }
+      entry.trips.push(`${h.location || country} (${hYear})`);
+      statusByCountry.set(mapName, entry);
     }
-    entry.trips.push(`${h.location || country} (${hYear})`);
-    statusByCountry.set(mapName, entry);
   }
 
   // Which of past/current/due buckets a country's trips fall into — a country can
@@ -1971,7 +2030,7 @@ function renderHolidayTable() {
       <tr class="${pastClass}">
         <td>${h.location}</td>
         <td><span class="tag status-${statusLabel}">${statusLabel}</span></td>
-        <td>${h.country || "-"}</td>
+        <td>${(h.countries && h.countries.length ? h.countries : [h.country]).filter(Boolean).join(", ") || "-"}</td>
         <td>${startDisplay}</td>
         <td>${endDisplay}</td>
         <td>${tripLength}</td>
@@ -2230,6 +2289,9 @@ function openAddHolidayModal() {
     el.holidayForm.dataset.endDateManual = "false";
     el.holidayForm.dataset.countryManual = "false";
     el.holidayForm.dataset.statusManual = "false";
+    addExtraCountries = [];
+    renderCountryChips(el.addCountriesChips, addExtraCountries);
+    if (el.addCountriesInput) el.addCountriesInput.value = "";
     // Default the trip dates into whichever year is currently selected — today's
     // date if that's the current year (the common case), otherwise the middle of
     // the selected year, so a trip added while browsing 2024 doesn't silently
@@ -2394,6 +2456,7 @@ async function addHoliday(payload) {
     const fallbackPayload = { ...payload };
     delete fallbackPayload.status;
     delete fallbackPayload.country;
+    delete fallbackPayload.countries;
     delete fallbackPayload.days_off_work;
     delete fallbackPayload.start_half;
     delete fallbackPayload.end_half;
@@ -2411,6 +2474,7 @@ async function updateHoliday(id, payload) {
     const fallbackPayload = { ...payload };
     delete fallbackPayload.status;
     delete fallbackPayload.country;
+    delete fallbackPayload.countries;
     delete fallbackPayload.days_off_work;
     delete fallbackPayload.start_half;
     delete fallbackPayload.end_half;
@@ -2432,6 +2496,13 @@ function openEditHolidayModal(holidayId) {
   el.editHolidayForm.elements.holidayId.value = String(holiday.id);
   el.editHolidayForm.elements.location.value = holiday.location;
   populateCountrySelect(el.editCountry, holiday.country || "United Kingdom");
+  // Chips show everything beyond the primary country - countries[0] (or
+  // country, for a not-yet-backfilled row) is already represented by the
+  // select above.
+  const primaryCountry = holiday.country || "United Kingdom";
+  editExtraCountries = (holiday.countries || []).filter((c) => c !== primaryCountry);
+  renderCountryChips(el.editCountriesChips, editExtraCountries);
+  if (el.editCountriesInput) el.editCountriesInput.value = "";
   el.editHolidayForm.elements.startDate.value = holiday.startDate;
   el.editHolidayForm.elements.startHalf.value = holiday.startHalf || "am";
   el.editHolidayForm.elements.endDate.value = holiday.endDate;
@@ -2519,11 +2590,15 @@ if (el.holidayForm) el.holidayForm.addEventListener("submit", async (e) => {
   const peopleDays = {};
   for (const name of selected) peopleDays[name] = Number(daysOffWork.toFixed(2));
   const safeStatus = HOLIDAY_STATUSES.includes(status) ? status : "planning";
+  // Primary country first, so countries[0] always matches the single
+  // `country` column pack.js still reads directly.
+  const countries = [country, ...addExtraCountries].filter(Boolean);
 
   try {
     await addHoliday({
       location,
       country,
+      countries,
       start_date: startDate,
       start_half: startHalf,
       end_date: endDate,
@@ -2536,6 +2611,8 @@ if (el.holidayForm) el.holidayForm.addEventListener("submit", async (e) => {
     await reloadHolidaysForYear(new Date(startDate).getFullYear());
     render();
     if (formEl && typeof formEl.reset === "function") formEl.reset();
+    addExtraCountries = [];
+    renderCountryChips(el.addCountriesChips, addExtraCountries);
     formEl.dataset.endDateManual = "false";
     formEl.dataset.countryManual = "false";
     formEl.dataset.statusManual = "false";
@@ -2677,6 +2754,52 @@ if (el.holidayForm) {
   if (el.holidayForm.elements.country) {
     el.holidayForm.elements.country.addEventListener("change", () => {
       el.holidayForm.dataset.countryManual = "true";
+      // Drop a chip if it now duplicates whatever the primary select just
+      // became, so the same country can't appear both as primary and extra.
+      addExtraCountries = removeExtraCountry(addExtraCountries, el.addCountriesChips, el.holidayForm.elements.country.value);
+    });
+  }
+  if (el.addCountriesAddBtn && el.addCountriesInput) {
+    el.addCountriesAddBtn.addEventListener("click", () => {
+      addExtraCountries = addExtraCountry(addExtraCountries, el.addCountriesChips, el.addCountry, el.addCountriesInput.value);
+      el.addCountriesInput.value = "";
+      el.addCountriesInput.focus();
+    });
+    el.addCountriesInput.addEventListener("keydown", (evt) => {
+      if (evt.key !== "Enter") return;
+      evt.preventDefault();
+      el.addCountriesAddBtn.click();
+    });
+  }
+  if (el.addCountriesChips) {
+    el.addCountriesChips.addEventListener("click", (evt) => {
+      const btn = evt.target.closest(".chip-remove");
+      if (!btn) return;
+      addExtraCountries = removeExtraCountry(addExtraCountries, el.addCountriesChips, btn.dataset.country);
+    });
+  }
+  if (el.editCountriesAddBtn && el.editCountriesInput) {
+    el.editCountriesAddBtn.addEventListener("click", () => {
+      editExtraCountries = addExtraCountry(editExtraCountries, el.editCountriesChips, el.editCountry, el.editCountriesInput.value);
+      el.editCountriesInput.value = "";
+      el.editCountriesInput.focus();
+    });
+    el.editCountriesInput.addEventListener("keydown", (evt) => {
+      if (evt.key !== "Enter") return;
+      evt.preventDefault();
+      el.editCountriesAddBtn.click();
+    });
+  }
+  if (el.editCountriesChips) {
+    el.editCountriesChips.addEventListener("click", (evt) => {
+      const btn = evt.target.closest(".chip-remove");
+      if (!btn) return;
+      editExtraCountries = removeExtraCountry(editExtraCountries, el.editCountriesChips, btn.dataset.country);
+    });
+  }
+  if (el.editCountry) {
+    el.editCountry.addEventListener("change", () => {
+      editExtraCountries = removeExtraCountry(editExtraCountries, el.editCountriesChips, el.editCountry.value);
     });
   }
   if (el.holidayForm.elements.location) {
@@ -2765,11 +2888,13 @@ if (el.editHolidayForm) el.editHolidayForm.addEventListener("submit", async (e) 
 
   const previousHoliday = state.holidays.find((h) => String(h.id) === String(id));
   const previousYear = previousHoliday ? new Date(previousHoliday.startDate).getFullYear() : null;
+  const countries = [country, ...editExtraCountries].filter(Boolean);
 
   try {
     await updateHoliday(id, {
       location,
       country,
+      countries,
       start_date: startDate,
       start_half: startHalf,
       end_date: endDate,
@@ -2893,6 +3018,7 @@ document.getElementById("sign-out-btn")?.addEventListener("click", async () => {
     try {
       populateCountrySelect(el.addCountry, "United Kingdom");
       populateCountrySelect(el.editCountry, "United Kingdom");
+      populateRecognizedCountriesDatalist();
       await loadData();
       render();
     } catch (err) {
