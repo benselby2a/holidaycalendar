@@ -324,10 +324,12 @@
         <div class="tab-bar top-tab-bar">
           <button id="pack-top-tab-itinerary-btn" class="tab-btn is-active" type="button" data-top-tab="itinerary">Itinerary</button>
           <button id="pack-top-tab-packing-btn" class="tab-btn" type="button" data-top-tab="packing">Packing</button>
-          <button id="pack-trip-summary-btn" class="icon-btn trip-summary-btn" type="button">Trip Summary</button>
         </div>
 
         <div id="pack-top-pane-itinerary" class="pane">
+          <div class="pane-actions">
+            <button id="pack-trip-summary-btn" class="icon-btn trip-summary-btn" type="button">Trip Summary</button>
+          </div>
           <div class="card flights-card flights-card-outbound">
             <section class="flights-leg">
               <header class="section-head">
@@ -1537,6 +1539,10 @@
     const accomLines = accommodationSummaryLines(trip);
     if (accomLines.length) {
       lines.push("", "ACCOMMODATION", ...accomLines);
+    }
+
+    if (trip.notes?.trim()) {
+      lines.push("", "NOTES", trip.notes.trim());
     }
 
     return lines.join("\n");
