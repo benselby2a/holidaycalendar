@@ -715,7 +715,21 @@
     el.flightsReturnList.addEventListener("click", onFlightListClick);
     el.flightLegToggle.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-leg]");
-      if (btn) setFlightModalLeg(btn.dataset.leg);
+      if (!btn) return;
+      const newLeg = btn.dataset.leg;
+      const oldLeg = currentFlightModalLeg();
+      if (newLeg === oldLeg) return;
+      setFlightModalLeg(newLeg);
+      // Editing an existing flight: the toggle just re-tags which leg it
+      // belongs to - there's only ever one set of fields for it.
+      if (editingFlightId) return;
+      // Adding: stash whatever's on screen under its own leg so switching
+      // over doesn't clobber it, then bring back that leg's draft (or a
+      // sensible default for Return) instead of leaving stale fields.
+      flightDrafts[oldLeg] = readFlightFormFields();
+      if (flightDrafts[newLeg]) writeFlightFormFields(flightDrafts[newLeg]);
+      else if (newLeg === "return") writeFlightFormFields(defaultReturnFields());
+      else writeFlightFormFields(null);
     });
     el.closeFlightBtn.addEventListener("click", () => closeModal(el.flightModal));
     el.flightCancelBtn.addEventListener("click", () => closeModal(el.flightModal));
@@ -1228,6 +1242,10 @@
   }
 
   let editingFlightId = null;
+  // Only used while adding a brand new flight (not editing) - holds
+  // whatever's been typed for each leg so toggling Outbound/Return in the
+  // dialog doesn't overwrite one with the other, and lets Save write both.
+  let flightDrafts = {};
 
   function setFlightModalLeg(leg) {
     for (const btn of el.flightLegToggle.querySelectorAll("[data-leg]")) {
@@ -1239,6 +1257,68 @@
     return el.flightLegToggle.querySelector(".is-active")?.dataset.leg || "outbound";
   }
 
+  function readFlightFormFields() {
+    return {
+      airline: el.flightAirlineInput.value,
+      flight_number: el.flightNumberInput.value,
+      departure_airport: normalizeAirportCode(el.flightDepAirportInput.value),
+      departure_date: el.flightDepDateInput.value,
+      departure_time: el.flightDepTimeInput.value,
+      arrival_airport: normalizeAirportCode(el.flightArrAirportInput.value),
+      arrival_date: el.flightArrDateInput.value,
+      arrival_time: el.flightArrTimeInput.value,
+      arrDateTouched: el.flightArrDateInput.dataset.touched || "",
+    };
+  }
+
+  function writeFlightFormFields(fields) {
+    const f = fields || {};
+    el.flightAirlineInput.value = f.airline || "";
+    el.flightNumberInput.value = f.flight_number || "";
+    el.flightDepAirportInput.value = f.departure_airport || "";
+    el.flightDepDateInput.value = f.departure_date || "";
+    el.flightDepTimeInput.value = f.departure_time || "";
+    el.flightArrAirportInput.value = f.arrival_airport || "";
+    el.flightArrDateInput.value = f.arrival_date || "";
+    el.flightArrTimeInput.value = f.arrival_time || "";
+    el.flightArrDateInput.dataset.touched = f.arrDateTouched || "";
+  }
+
+  function flightToFields(flight) {
+    return {
+      airline: flight.airline || "",
+      flight_number: flight.flight_number || "",
+      departure_airport: flight.departure_airport || "",
+      departure_date: flight.departure_date || "",
+      departure_time: flight.departure_time?.slice(0, 5) || "",
+      arrival_airport: flight.arrival_airport || "",
+      arrival_date: flight.arrival_date || "",
+      arrival_time: flight.arrival_time?.slice(0, 5) || "",
+      arrDateTouched: "true",
+    };
+  }
+
+  // A round trip's return leg is normally the same airline flying the same
+  // route backwards, landing home on the last day of the trip - prefill
+  // that from the outbound draft (when there is one) and the trip's own
+  // dates, so toggling to Return during an add is usually just "fill in
+  // the flight number and times" rather than retyping everything.
+  function defaultReturnFields() {
+    const trip = currentTrip();
+    const ob = flightDrafts.outbound;
+    return {
+      airline: ob?.airline || "",
+      flight_number: "",
+      departure_airport: normalizeAirportCode(ob?.arrival_airport || ""),
+      departure_date: trip?.end_date || "",
+      departure_time: "",
+      arrival_airport: normalizeAirportCode(ob?.departure_airport || ""),
+      arrival_date: "",
+      arrival_time: "",
+      arrDateTouched: "",
+    };
+  }
+
   // leg picks which section "+ Add Flight" was clicked from, for a new
   // flight; flightId (when editing an existing one) takes priority since
   // the flight already has its own leg.
@@ -1247,57 +1327,88 @@
     if (!trip) return;
     const flight = flightId ? state.flights.find((f) => String(f.id) === String(flightId)) : null;
     editingFlightId = flight ? flight.id : null;
+    flightDrafts = {};
 
     el.flightModalTitle.textContent = flight ? "Edit Flight" : "Add Flight";
-    setFlightModalLeg(flight ? flight.leg : (leg || "outbound"));
-    el.flightAirlineInput.value = flight?.airline || "";
-    el.flightNumberInput.value = flight?.flight_number || "";
-    el.flightDepAirportInput.value = flight?.departure_airport || "";
-    el.flightDepDateInput.value = flight?.departure_date || "";
-    el.flightDepTimeInput.value = flight?.departure_time?.slice(0, 5) || "";
-    el.flightArrAirportInput.value = flight?.arrival_airport || "";
-    el.flightArrDateInput.value = flight?.arrival_date || "";
-    el.flightArrTimeInput.value = flight?.arrival_time?.slice(0, 5) || "";
-    // Only auto-follow departure date on a brand new flight - an existing
-    // flight's arrival date is deliberate (or already defaulted) and
-    // shouldn't jump around just because departure date gets edited.
-    el.flightArrDateInput.dataset.touched = flight ? "true" : "";
+    const startLeg = flight ? flight.leg : (leg || "outbound");
+    setFlightModalLeg(startLeg);
+    if (flight) writeFlightFormFields(flightToFields(flight));
+    else if (startLeg === "return") writeFlightFormFields(defaultReturnFields());
+    else writeFlightFormFields(null);
     el.flightDeleteBtn.hidden = !flight;
     openModal(el.flightModal);
     el.flightAirlineInput.focus();
+  }
+
+  function buildFlightFromFields(trip, leg, f) {
+    return {
+      id: crypto.randomUUID(), holiday_id: trip.id, household_id: APP_CONFIG.householdId,
+      sort_order: 0, deleted_at: null, updated_at: new Date().toISOString(), updated_by: currentUserId,
+      leg,
+      airline: (f.airline || "").trim() || null,
+      flight_number: (f.flight_number || "").trim() || null,
+      departure_airport: normalizeAirportCode(f.departure_airport),
+      departure_date: f.departure_date,
+      departure_time: f.departure_time || null,
+      arrival_airport: normalizeAirportCode(f.arrival_airport),
+      arrival_date: f.arrival_date || f.departure_date,
+      arrival_time: f.arrival_time || null,
+    };
   }
 
   async function onFlightFormSubmit(e) {
     e.preventDefault();
     const trip = currentTrip();
     if (!trip) return;
-    const depAirport = normalizeAirportCode(el.flightDepAirportInput.value);
-    const arrAirport = normalizeAirportCode(el.flightArrAirportInput.value);
-    const depDate = el.flightDepDateInput.value;
-    if (!depAirport || !arrAirport || !depDate) return;
 
-    const existing = editingFlightId ? state.flights.find((f) => f.id === editingFlightId) : null;
-    const flight = existing || {
-      id: crypto.randomUUID(), holiday_id: trip.id, household_id: APP_CONFIG.householdId,
-      sort_order: 0, deleted_at: null, updated_at: new Date().toISOString(), updated_by: currentUserId
-    };
-    flight.leg = currentFlightModalLeg();
-    flight.airline = el.flightAirlineInput.value.trim() || null;
-    flight.flight_number = el.flightNumberInput.value.trim() || null;
-    flight.departure_airport = depAirport;
-    flight.departure_date = depDate;
-    flight.departure_time = el.flightDepTimeInput.value || null;
-    flight.arrival_airport = arrAirport;
-    flight.arrival_date = el.flightArrDateInput.value || depDate;
-    flight.arrival_time = el.flightArrTimeInput.value || null;
-    touch(flight);
+    if (editingFlightId) {
+      const depAirport = normalizeAirportCode(el.flightDepAirportInput.value);
+      const arrAirport = normalizeAirportCode(el.flightArrAirportInput.value);
+      const depDate = el.flightDepDateInput.value;
+      if (!depAirport || !arrAirport || !depDate) return;
+      const flight = state.flights.find((f) => f.id === editingFlightId);
+      if (!flight) return;
+      flight.leg = currentFlightModalLeg();
+      flight.airline = el.flightAirlineInput.value.trim() || null;
+      flight.flight_number = el.flightNumberInput.value.trim() || null;
+      flight.departure_airport = depAirport;
+      flight.departure_date = depDate;
+      flight.departure_time = el.flightDepTimeInput.value || null;
+      flight.arrival_airport = arrAirport;
+      flight.arrival_date = el.flightArrDateInput.value || depDate;
+      flight.arrival_time = el.flightArrTimeInput.value || null;
+      touch(flight);
+      await persistLocal();
+      await enqueue(flight, "flights");
+      closeModal(el.flightModal);
+      renderFlights();
+      showToast("Flight updated");
+      syncNow();
+      return;
+    }
 
-    if (!existing) state.flights.push(flight);
+    // Adding: fold whichever leg is currently on screen into its own draft,
+    // then save a flight for every leg (outbound and/or return) that ended
+    // up with enough filled in - so toggling over to fill in the return
+    // flight adds it alongside the outbound one instead of replacing it.
+    flightDrafts[currentFlightModalLeg()] = readFlightFormFields();
+    const newFlights = [];
+    for (const leg of ["outbound", "return"]) {
+      const f = flightDrafts[leg];
+      if (!f || !normalizeAirportCode(f.departure_airport) || !normalizeAirportCode(f.arrival_airport) || !f.departure_date) continue;
+      newFlights.push(buildFlightFromFields(trip, leg, f));
+    }
+    if (!newFlights.length) return;
+
+    for (const flight of newFlights) {
+      touch(flight);
+      state.flights.push(flight);
+      await enqueue(flight, "flights");
+    }
     await persistLocal();
-    await enqueue(flight, "flights");
     closeModal(el.flightModal);
     renderFlights();
-    showToast(existing ? "Flight updated" : "Flight added");
+    showToast(newFlights.length > 1 ? "Flights added" : "Flight added");
     syncNow();
   }
 
