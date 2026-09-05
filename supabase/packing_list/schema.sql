@@ -92,6 +92,41 @@ create index if not exists trip_days_holiday_idx
   on packing_list.trip_days(holiday_id, day_date);
 
 -- ---------------------------------------------------------------------------
+-- Flights either side of the trip.
+--   leg = 'outbound' -> getting there, 'return' -> getting home
+-- Departure/arrival are plain date + time, deliberately not timestamptz:
+-- doing timezone-aware duration properly means resolving each airport code
+-- to an IANA zone, which needs a real airport database this app doesn't
+-- have. Kept as the wall-clock values off the boarding pass instead - the
+-- app computes a naive (non-timezone-aware) duration from these, which is
+-- exactly right for a same-timezone hop and only wrong by the zone
+-- difference for a long-haul one.
+-- ---------------------------------------------------------------------------
+create table if not exists packing_list.flights (
+  id uuid primary key default gen_random_uuid(),
+  holiday_id bigint not null,
+  household_id text not null,
+  leg text not null default 'outbound',
+  airline text,
+  flight_number text,
+  departure_airport text,
+  departure_date date,
+  departure_time time,
+  arrival_airport text,
+  arrival_date date,
+  arrival_time time,
+  sort_order integer not null default 0,
+  deleted_at timestamptz,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  updated_by text,
+  constraint flights_leg_check check (leg in ('outbound', 'return'))
+);
+
+create index if not exists flights_holiday_idx
+  on packing_list.flights(holiday_id, leg, sort_order);
+
+-- ---------------------------------------------------------------------------
 -- Packing items
 --   scope = 'personal' -> traveller_id owns and packs it (their individual list)
 --   scope = 'shared'   -> one item for the whole trip; traveller_id is the
@@ -192,6 +227,7 @@ create index if not exists item_favourites_user_idx
 alter table packing_list.trip_meta enable row level security;
 alter table packing_list.travellers enable row level security;
 alter table packing_list.trip_days enable row level security;
+alter table packing_list.flights enable row level security;
 alter table packing_list.packing_items enable row level security;
 alter table packing_list.standard_items enable row level security;
 alter table packing_list.item_favourites enable row level security;
@@ -200,7 +236,7 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['trip_meta', 'travellers', 'trip_days', 'packing_items', 'standard_items', 'item_favourites'] loop
+  foreach t in array array['trip_meta', 'travellers', 'trip_days', 'flights', 'packing_items', 'standard_items', 'item_favourites'] loop
     execute format('drop policy if exists "household read %1$s" on packing_list.%1$I', t);
     execute format(
       'create policy "household read %1$s" on packing_list.%1$I for select to authenticated using (household_id = ''shared-household'')',

@@ -37,7 +37,7 @@
 
   const WHOAMI_KEY = "packing_list_whoami";
   const TOP_TAB_KEY = "packing_list_top_tab";
-  const TABLE_ORDER = ["travellers", "trip_meta", "trip_days", "standard_items", "item_favourites", "packing_items"];
+  const TABLE_ORDER = ["travellers", "trip_meta", "trip_days", "flights", "standard_items", "item_favourites", "packing_items"];
 
   // Hardcoded on purpose: exactly two people ever use this app. Maps the
   // signed-in Supabase Auth email to a traveller name so opening a trip
@@ -70,6 +70,7 @@
     tripMeta: null,
     travellers: [],
     tripDays: [],
+    flights: [],
     items: [],
     standardItems: [],
     favourites: [],
@@ -326,6 +327,23 @@
         </div>
 
         <div id="pack-top-pane-itinerary" class="pane">
+          <div class="card flights-card">
+            <section class="flights-leg">
+              <header class="section-head">
+                <h3>Outbound</h3>
+                <button class="icon-btn add-flight-btn" type="button" data-leg="outbound">+ Add Flight</button>
+              </header>
+              <ul id="pack-flights-outbound-list" class="plain-list flight-list"></ul>
+            </section>
+            <section class="flights-leg">
+              <header class="section-head">
+                <h3>Return</h3>
+                <button class="icon-btn add-flight-btn" type="button" data-leg="return">+ Add Flight</button>
+              </header>
+              <ul id="pack-flights-return-list" class="plain-list flight-list"></ul>
+            </section>
+          </div>
+
           <div id="pack-itinerary-table-wrap"></div>
           <p id="pack-itinerary-empty" class="empty-note" hidden>Set trip dates in Holiday Calendar to plan each day.</p>
 
@@ -453,6 +471,61 @@
         </div>
       </div>
 
+      <div id="pack-flight-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2 id="pack-flight-modal-title">Add Flight</h2>
+            <button id="pack-close-flight-btn" class="icon-btn" type="button">✕</button>
+          </div>
+          <form id="pack-flight-form" class="stack-form" autocomplete="off">
+            <div class="scope-toggle" id="pack-flight-leg-toggle" role="group" aria-label="Which leg">
+              <button type="button" class="scope-btn" data-leg="outbound">Outbound</button>
+              <button type="button" class="scope-btn" data-leg="return">Return</button>
+            </div>
+            <div class="form-row">
+              <label>Airline
+                <input id="pack-flight-airline-input" type="text" placeholder="e.g. British Airways" autocomplete="off" />
+              </label>
+              <label>Flight number
+                <input id="pack-flight-number-input" type="text" placeholder="e.g. BA123" autocomplete="off" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Departure airport
+                <input id="pack-flight-dep-airport-input" type="text" placeholder="e.g. LHR" required autocomplete="off" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Departure date
+                <input id="pack-flight-dep-date-input" type="date" required />
+              </label>
+              <label>Departure time
+                <input id="pack-flight-dep-time-input" type="time" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Arrival airport
+                <input id="pack-flight-arr-airport-input" type="text" placeholder="e.g. JFK" required autocomplete="off" />
+              </label>
+            </div>
+            <div class="form-row">
+              <label>Arrival date
+                <input id="pack-flight-arr-date-input" type="date" />
+              </label>
+              <label>Arrival time
+                <input id="pack-flight-arr-time-input" type="time" />
+              </label>
+            </div>
+            <p class="muted-line">Arrival date defaults to the departure date - change it for an overnight flight landing the next day.</p>
+            <div class="db-actions">
+              <button class="icon-btn primary-btn" type="submit">Save</button>
+              <button id="pack-flight-delete-btn" class="icon-btn danger-btn" type="button" hidden>Delete</button>
+              <button id="pack-flight-cancel-btn" class="icon-btn" type="button">Cancel</button>
+            </div>
+          </form>
+        </div>
+      </div>
+
       <div id="pack-check-toast" class="check-toast" hidden>
         <span id="pack-check-toast-text">Packed</span>
       </div>
@@ -510,6 +583,24 @@
 
     el.itineraryTableWrap = q("pack-itinerary-table-wrap");
     el.itineraryEmpty = q("pack-itinerary-empty");
+
+    el.flightsOutboundList = q("pack-flights-outbound-list");
+    el.flightsReturnList = q("pack-flights-return-list");
+    el.flightModal = q("pack-flight-modal");
+    el.flightModalTitle = q("pack-flight-modal-title");
+    el.closeFlightBtn = q("pack-close-flight-btn");
+    el.flightForm = q("pack-flight-form");
+    el.flightLegToggle = q("pack-flight-leg-toggle");
+    el.flightAirlineInput = q("pack-flight-airline-input");
+    el.flightNumberInput = q("pack-flight-number-input");
+    el.flightDepAirportInput = q("pack-flight-dep-airport-input");
+    el.flightDepDateInput = q("pack-flight-dep-date-input");
+    el.flightDepTimeInput = q("pack-flight-dep-time-input");
+    el.flightArrAirportInput = q("pack-flight-arr-airport-input");
+    el.flightArrDateInput = q("pack-flight-arr-date-input");
+    el.flightArrTimeInput = q("pack-flight-arr-time-input");
+    el.flightDeleteBtn = q("pack-flight-delete-btn");
+    el.flightCancelBtn = q("pack-flight-cancel-btn");
 
     el.tripNotesInput = q("pack-trip-notes-input");
     el.tripNotesSaveBtn = q("pack-trip-notes-save-btn");
@@ -617,6 +708,27 @@
     el.renameCancelBtn.addEventListener("click", () => closeModal(el.renameModal));
     el.renameForm.addEventListener("submit", onRenameSubmit);
 
+    for (const btn of root.querySelectorAll(".add-flight-btn")) {
+      btn.addEventListener("click", () => openFlightModal(btn.dataset.leg));
+    }
+    el.flightsOutboundList.addEventListener("click", onFlightListClick);
+    el.flightsReturnList.addEventListener("click", onFlightListClick);
+    el.flightLegToggle.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-leg]");
+      if (btn) setFlightModalLeg(btn.dataset.leg);
+    });
+    el.closeFlightBtn.addEventListener("click", () => closeModal(el.flightModal));
+    el.flightCancelBtn.addEventListener("click", () => closeModal(el.flightModal));
+    el.flightForm.addEventListener("submit", onFlightFormSubmit);
+    el.flightDeleteBtn.addEventListener("click", onFlightDeleteClick);
+    // Arrival date quietly tracks departure date until the user actually
+    // changes it - covers the common same-day-arrival case with zero extra
+    // taps, without needing a "+1/+2 days" control at all.
+    el.flightDepDateInput.addEventListener("change", () => {
+      if (!el.flightArrDateInput.dataset.touched) el.flightArrDateInput.value = el.flightDepDateInput.value;
+    });
+    el.flightArrDateInput.addEventListener("input", () => { el.flightArrDateInput.dataset.touched = "true"; });
+
     el.closeConflictBtn.addEventListener("click", acknowledgeConflict);
     el.resolveConflictBtn.addEventListener("click", acknowledgeConflict);
 
@@ -684,6 +796,7 @@
     renderMine();
     renderShared();
     renderEveryone();
+    renderFlights();
     renderItinerary();
     renderTripNotes();
   }
@@ -1037,6 +1150,180 @@
     };
     state.tripDays.push(row);
     return row;
+  }
+
+  // ---------------------------------------------------------------------
+  // Flights (outbound + return, shown above the itinerary grid)
+  // ---------------------------------------------------------------------
+
+  function tripFlights(holidayId, leg) {
+    return state.flights
+      .filter((f) => f.holiday_id === holidayId && !f.deleted_at && f.leg === leg)
+      .sort((a, b) =>
+        (a.departure_date || "").localeCompare(b.departure_date || "") ||
+        (a.departure_time || "").localeCompare(b.departure_time || "") ||
+        (a.sort_order || 0) - (b.sort_order || 0)
+      );
+  }
+
+  function renderFlights() {
+    const trip = currentTrip();
+    if (!trip) return;
+    el.flightsOutboundList.innerHTML = tripFlights(trip.id, "outbound").map(flightRowHtml).join("");
+    el.flightsReturnList.innerHTML = tripFlights(trip.id, "return").map(flightRowHtml).join("");
+  }
+
+  function formatFlightDate(dateStr) {
+    if (!dateStr) return "";
+    return new Date(`${dateStr}T00:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" });
+  }
+
+  function formatFlightTime(timeStr) {
+    return (timeStr || "").slice(0, 5);
+  }
+
+  // Naive elapsed time between the two wall-clock values as entered - not
+  // timezone-aware (that would need resolving each airport code to an IANA
+  // zone, which needs a real airport database this app doesn't have), so
+  // it's exactly right for a same-timezone hop and only off by the zone
+  // difference for a long-haul one.
+  function flightDurationLabel(flight) {
+    if (!flight.departure_date || !flight.departure_time || !flight.arrival_date || !flight.arrival_time) return "";
+    const dep = new Date(`${flight.departure_date}T${flight.departure_time}`);
+    const arr = new Date(`${flight.arrival_date}T${flight.arrival_time}`);
+    const minutes = Math.round((arr - dep) / 60000);
+    if (!Number.isFinite(minutes) || minutes <= 0) return "";
+    const h = Math.floor(minutes / 60);
+    const m = minutes % 60;
+    return `${h}h${m ? ` ${m}m` : ""}`;
+  }
+
+  function flightRowHtml(flight) {
+    const headline = [flight.airline, flight.flight_number].filter(Boolean).join(" ") || "Flight";
+    const route = `${escapeHtml(flight.departure_airport || "?")} ${formatFlightTime(flight.departure_time)} → ${escapeHtml(flight.arrival_airport || "?")} ${formatFlightTime(flight.arrival_time)}`;
+    // Only show the arrival date separately when it differs from departure -
+    // otherwise every same-day flight would show "Fri 10 Oct – Fri 10 Oct".
+    const dateLabel = flight.arrival_date && flight.arrival_date !== flight.departure_date
+      ? `${formatFlightDate(flight.departure_date)} – ${formatFlightDate(flight.arrival_date)}`
+      : formatFlightDate(flight.departure_date);
+    const duration = flightDurationLabel(flight);
+    const meta = [dateLabel, duration].filter(Boolean).join(" · ");
+
+    return `
+      <li class="plain-row flight-row" data-id="${flight.id}">
+        <button class="flight-main" type="button" data-edit-flight="${flight.id}">
+          <span class="flight-headline">${escapeHtml(headline)}</span>
+          <span class="flight-route">${route}</span>
+          ${meta ? `<span class="flight-meta muted-line">${escapeHtml(meta)}</span>` : ""}
+        </button>
+        <button class="delete-btn" type="button" data-delete-flight="${flight.id}" aria-label="Delete flight">✕</button>
+      </li>`;
+  }
+
+  function onFlightListClick(e) {
+    const edit = e.target.closest("[data-edit-flight]");
+    if (edit) return openFlightModal(null, edit.dataset.editFlight);
+    const del = e.target.closest("[data-delete-flight]");
+    if (del) return deleteFlight(del.dataset.deleteFlight);
+  }
+
+  let editingFlightId = null;
+
+  function setFlightModalLeg(leg) {
+    for (const btn of el.flightLegToggle.querySelectorAll("[data-leg]")) {
+      btn.classList.toggle("is-active", btn.dataset.leg === leg);
+    }
+  }
+
+  function currentFlightModalLeg() {
+    return el.flightLegToggle.querySelector(".is-active")?.dataset.leg || "outbound";
+  }
+
+  // leg picks which section "+ Add Flight" was clicked from, for a new
+  // flight; flightId (when editing an existing one) takes priority since
+  // the flight already has its own leg.
+  function openFlightModal(leg, flightId) {
+    const trip = currentTrip();
+    if (!trip) return;
+    const flight = flightId ? state.flights.find((f) => String(f.id) === String(flightId)) : null;
+    editingFlightId = flight ? flight.id : null;
+
+    el.flightModalTitle.textContent = flight ? "Edit Flight" : "Add Flight";
+    setFlightModalLeg(flight ? flight.leg : (leg || "outbound"));
+    el.flightAirlineInput.value = flight?.airline || "";
+    el.flightNumberInput.value = flight?.flight_number || "";
+    el.flightDepAirportInput.value = flight?.departure_airport || "";
+    el.flightDepDateInput.value = flight?.departure_date || "";
+    el.flightDepTimeInput.value = flight?.departure_time?.slice(0, 5) || "";
+    el.flightArrAirportInput.value = flight?.arrival_airport || "";
+    el.flightArrDateInput.value = flight?.arrival_date || "";
+    el.flightArrTimeInput.value = flight?.arrival_time?.slice(0, 5) || "";
+    // Only auto-follow departure date on a brand new flight - an existing
+    // flight's arrival date is deliberate (or already defaulted) and
+    // shouldn't jump around just because departure date gets edited.
+    el.flightArrDateInput.dataset.touched = flight ? "true" : "";
+    el.flightDeleteBtn.hidden = !flight;
+    openModal(el.flightModal);
+    el.flightAirlineInput.focus();
+  }
+
+  async function onFlightFormSubmit(e) {
+    e.preventDefault();
+    const trip = currentTrip();
+    if (!trip) return;
+    const depAirport = normalizeAirportCode(el.flightDepAirportInput.value);
+    const arrAirport = normalizeAirportCode(el.flightArrAirportInput.value);
+    const depDate = el.flightDepDateInput.value;
+    if (!depAirport || !arrAirport || !depDate) return;
+
+    const existing = editingFlightId ? state.flights.find((f) => f.id === editingFlightId) : null;
+    const flight = existing || {
+      id: crypto.randomUUID(), holiday_id: trip.id, household_id: APP_CONFIG.householdId,
+      sort_order: 0, deleted_at: null, updated_at: new Date().toISOString(), updated_by: currentUserId
+    };
+    flight.leg = currentFlightModalLeg();
+    flight.airline = el.flightAirlineInput.value.trim() || null;
+    flight.flight_number = el.flightNumberInput.value.trim() || null;
+    flight.departure_airport = depAirport;
+    flight.departure_date = depDate;
+    flight.departure_time = el.flightDepTimeInput.value || null;
+    flight.arrival_airport = arrAirport;
+    flight.arrival_date = el.flightArrDateInput.value || depDate;
+    flight.arrival_time = el.flightArrTimeInput.value || null;
+    touch(flight);
+
+    if (!existing) state.flights.push(flight);
+    await persistLocal();
+    await enqueue(flight, "flights");
+    closeModal(el.flightModal);
+    renderFlights();
+    showToast(existing ? "Flight updated" : "Flight added");
+    syncNow();
+  }
+
+  async function softDeleteFlight(id) {
+    const flight = state.flights.find((f) => String(f.id) === String(id));
+    if (!flight) return;
+    flight.deleted_at = new Date().toISOString();
+    touch(flight);
+    await persistLocal();
+    await enqueue(flight, "flights");
+    renderFlights();
+    showToast("Flight removed");
+    syncNow();
+  }
+
+  async function deleteFlight(id) {
+    if (!confirm("Remove this flight?")) return;
+    await softDeleteFlight(id);
+  }
+
+  async function onFlightDeleteClick() {
+    if (!editingFlightId) return;
+    if (!confirm("Remove this flight?")) return;
+    const id = editingFlightId;
+    closeModal(el.flightModal);
+    await softDeleteFlight(id);
   }
 
   function renderItinerary() {
@@ -2302,28 +2589,32 @@
 
   async function pullAll() {
     const holidayId = state.holiday.id;
-    const [travellers, tripDaysRes, items, standards, favourites, meta] = await Promise.all([
+    const [travellers, tripDaysRes, flightsRes, items, standards, favourites, meta] = await Promise.all([
       apiSelect("travellers", { eq: { holiday_id: holidayId, household_id: APP_CONFIG.householdId }, is: { deleted_at: "null" } }),
       apiSelect("trip_days", { eq: { holiday_id: holidayId, household_id: APP_CONFIG.householdId }, is: { deleted_at: "null" } }),
+      apiSelect("flights", { eq: { holiday_id: holidayId, household_id: APP_CONFIG.householdId }, is: { deleted_at: "null" } }),
       apiSelect("packing_items", { eq: { holiday_id: holidayId, household_id: APP_CONFIG.householdId }, is: { deleted_at: "null" } }),
       apiSelect("standard_items", { eq: { household_id: APP_CONFIG.householdId }, is: { deleted_at: "null" } }),
       apiSelect("item_favourites", { eq: { household_id: APP_CONFIG.householdId }, is: { deleted_at: "null" } }),
       apiSelect("trip_meta", { eq: { holiday_id: holidayId } })
     ]);
 
-    // item_favourites is the newest table here, so it's the one most likely
-    // to be missing on a project that hasn't run the migration yet. Its
-    // absence must NOT fail the whole pull: doing so meant deploying this
-    // code before running the migration silently stopped *every* table
-    // syncing, so locally cached rows (deleted server-side) never
-    // reconciled and kept reappearing. Degrade to "no favourites" instead.
+    // item_favourites and flights are the newest tables here, so they're the
+    // most likely to be missing on a project that hasn't run their migration
+    // yet. Their absence must NOT fail the whole pull: doing so meant
+    // deploying this code before running the migration silently stopped
+    // *every* table syncing, so locally cached rows (deleted server-side)
+    // never reconciled and kept reappearing. Degrade to "nothing there yet"
+    // for just that one table instead.
     if (favourites.error) console.warn("packing: item_favourites unavailable, continuing without favourites —", favourites.error.message);
+    if (flightsRes.error) console.warn("packing: flights unavailable, continuing without flights —", flightsRes.error.message);
     const error = travellers.error || tripDaysRes.error || items.error || standards.error || meta.error;
     if (error) return { error };
 
     const pendingByTable = buildPendingPayloadMap();
     state.travellers = mergeById(state.travellers, travellers.data || [], pendingByTable.travellers);
     state.tripDays = mergeById(state.tripDays, tripDaysRes.data || [], pendingByTable.trip_days);
+    if (!flightsRes.error) state.flights = mergeById(state.flights, flightsRes.data || [], pendingByTable.flights);
 
     const merged = mergeById(state.items, items.data || [], pendingByTable.packing_items);
     detectConflicts(state.items, merged, pendingByTable.packing_items);
@@ -2360,7 +2651,7 @@
   }
 
   function buildPendingPayloadMap() {
-    const map = { travellers: new Map(), trip_meta: new Map(), trip_days: new Map(), packing_items: new Map(), standard_items: new Map(), item_favourites: new Map() };
+    const map = { travellers: new Map(), trip_meta: new Map(), trip_days: new Map(), flights: new Map(), packing_items: new Map(), standard_items: new Map(), item_favourites: new Map() };
     for (const op of state.pending) {
       const bucket = map[op.table];
       if (!bucket) continue;
@@ -2529,6 +2820,7 @@
     const db = await getIdb();
     state.travellers = (await idbGet(db, "state", idbKey("travellers", holidayId))) || [];
     state.tripDays = (await idbGet(db, "state", idbKey("tripDays", holidayId))) || [];
+    state.flights = (await idbGet(db, "state", idbKey("flights", holidayId))) || [];
     state.items = (await idbGet(db, "state", idbKey("items", holidayId))) || [];
     state.pending = (await idbGet(db, "state", idbKey("pending", holidayId))) || [];
     state.tripMeta = (await idbGet(db, "state", idbKey("tripMeta", holidayId))) || null;
@@ -2542,6 +2834,7 @@
     const db = await getIdb();
     await idbSet(db, "state", idbKey("travellers", holidayId), state.travellers);
     await idbSet(db, "state", idbKey("tripDays", holidayId), state.tripDays);
+    await idbSet(db, "state", idbKey("flights", holidayId), state.flights);
     await idbSet(db, "state", idbKey("items", holidayId), state.items);
     await idbSet(db, "state", idbKey("pending", holidayId), state.pending);
     await idbSet(db, "state", idbKey("tripMeta", holidayId), state.tripMeta);
@@ -2670,6 +2963,13 @@
     const compact = (value || "").trim().replace(/\s+/g, " ");
     if (!compact) return "";
     return compact.split(" ").map((w) => w.charAt(0).toUpperCase() + w.slice(1)).join(" ");
+  }
+
+  // IATA codes are conventionally all-caps (LHR, not Lhr) - normalizeName's
+  // title-casing would mangle a lowercase-typed code, so airports get their
+  // own simple uppercase-and-trim instead.
+  function normalizeAirportCode(value) {
+    return (value || "").trim().replace(/\s+/g, " ").toUpperCase();
   }
 
   function canonicalKey(value) {

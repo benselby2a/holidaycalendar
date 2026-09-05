@@ -606,6 +606,45 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 .pack-screen .plain-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; border-bottom: 1px solid var(--border); padding: 8px 2px; }
 .pack-screen .plain-row:last-child { border-bottom: none; }
 .pack-screen .row-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+
+/* ------------------------------------------------------------ flights card */
+.pack-screen .flights-card { display: grid; gap: 14px; }
+.pack-screen .flights-leg .section-head { padding: 0 0 4px; }
+.pack-screen .add-flight-btn {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--brand);
+  background: var(--brand-soft);
+  border-color: transparent;
+}
+.pack-screen .flight-list:empty::after {
+  content: "No flights added yet.";
+  display: block;
+  color: var(--muted);
+  font-size: 0.85rem;
+  padding: 6px 2px;
+}
+.pack-screen .flight-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  background: none;
+  border: none;
+  color: var(--text);
+  text-align: left;
+  padding: 8px 2px;
+  min-height: 44px;
+  cursor: pointer;
+}
+.pack-screen .flight-headline { font-weight: 700; font-size: 0.88rem; }
+.pack-screen .flight-route { font-size: 0.92rem; }
+.pack-screen .flight-meta { font-size: 0.76rem; }
+.pack-screen .flight-row .delete-btn { flex: none; align-self: center; }
 .pack-screen .inline-form { display: flex; gap: 8px; margin-top: 12px; }
 .pack-screen .inline-form input { flex: 1; }
 
