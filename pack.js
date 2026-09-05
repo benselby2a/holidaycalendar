@@ -324,10 +324,11 @@
         <div class="tab-bar top-tab-bar">
           <button id="pack-top-tab-itinerary-btn" class="tab-btn is-active" type="button" data-top-tab="itinerary">Itinerary</button>
           <button id="pack-top-tab-packing-btn" class="tab-btn" type="button" data-top-tab="packing">Packing</button>
+          <button id="pack-trip-summary-btn" class="icon-btn trip-summary-btn" type="button">Trip Summary</button>
         </div>
 
         <div id="pack-top-pane-itinerary" class="pane">
-          <div class="card flights-card">
+          <div class="card flights-card flights-card-outbound">
             <section class="flights-leg">
               <header class="section-head">
                 <h3>Outbound</h3>
@@ -335,6 +336,12 @@
               </header>
               <ul id="pack-flights-outbound-list" class="plain-list flight-list"></ul>
             </section>
+          </div>
+
+          <div id="pack-itinerary-table-wrap"></div>
+          <p id="pack-itinerary-empty" class="empty-note" hidden>Set trip dates in Holiday Calendar to plan each day.</p>
+
+          <div class="card flights-card flights-card-return">
             <section class="flights-leg">
               <header class="section-head">
                 <h3>Return</h3>
@@ -343,9 +350,6 @@
               <ul id="pack-flights-return-list" class="plain-list flight-list"></ul>
             </section>
           </div>
-
-          <div id="pack-itinerary-table-wrap"></div>
-          <p id="pack-itinerary-empty" class="empty-note" hidden>Set trip dates in Holiday Calendar to plan each day.</p>
 
           <div class="card trip-notes">
             <label for="pack-trip-notes-input">Notes</label>
@@ -526,6 +530,20 @@
         </div>
       </div>
 
+      <div id="pack-trip-summary-modal" class="modal">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h2>Trip Summary</h2>
+            <button id="pack-close-trip-summary-btn" class="icon-btn" type="button">✕</button>
+          </div>
+          <textarea id="pack-trip-summary-text" class="trip-summary-textarea" readonly rows="16"></textarea>
+          <div class="db-actions">
+            <button id="pack-copy-trip-summary-btn" class="icon-btn primary-btn" type="button">Copy</button>
+            <button id="pack-trip-summary-cancel-btn" class="icon-btn" type="button">Close</button>
+          </div>
+        </div>
+      </div>
+
       <div id="pack-check-toast" class="check-toast" hidden>
         <span id="pack-check-toast-text">Packed</span>
       </div>
@@ -601,6 +619,13 @@
     el.flightArrTimeInput = q("pack-flight-arr-time-input");
     el.flightDeleteBtn = q("pack-flight-delete-btn");
     el.flightCancelBtn = q("pack-flight-cancel-btn");
+
+    el.tripSummaryBtn = q("pack-trip-summary-btn");
+    el.tripSummaryModal = q("pack-trip-summary-modal");
+    el.tripSummaryText = q("pack-trip-summary-text");
+    el.closeTripSummaryBtn = q("pack-close-trip-summary-btn");
+    el.tripSummaryCancelBtn = q("pack-trip-summary-cancel-btn");
+    el.copyTripSummaryBtn = q("pack-copy-trip-summary-btn");
 
     el.tripNotesInput = q("pack-trip-notes-input");
     el.tripNotesSaveBtn = q("pack-trip-notes-save-btn");
@@ -729,7 +754,7 @@
       flightDrafts[oldLeg] = readFlightFormFields();
       if (flightDrafts[newLeg]) writeFlightFormFields(flightDrafts[newLeg]);
       else if (newLeg === "return") writeFlightFormFields(defaultReturnFields());
-      else writeFlightFormFields(null);
+      else writeFlightFormFields(defaultOutboundFields());
     });
     el.closeFlightBtn.addEventListener("click", () => closeModal(el.flightModal));
     el.flightCancelBtn.addEventListener("click", () => closeModal(el.flightModal));
@@ -742,6 +767,11 @@
       if (!el.flightArrDateInput.dataset.touched) el.flightArrDateInput.value = el.flightDepDateInput.value;
     });
     el.flightArrDateInput.addEventListener("input", () => { el.flightArrDateInput.dataset.touched = "true"; });
+
+    el.tripSummaryBtn.addEventListener("click", openTripSummaryModal);
+    el.closeTripSummaryBtn.addEventListener("click", () => closeModal(el.tripSummaryModal));
+    el.tripSummaryCancelBtn.addEventListener("click", () => closeModal(el.tripSummaryModal));
+    el.copyTripSummaryBtn.addEventListener("click", copyTripSummary);
 
     el.closeConflictBtn.addEventListener("click", acknowledgeConflict);
     el.resolveConflictBtn.addEventListener("click", acknowledgeConflict);
@@ -1196,22 +1226,6 @@
     return (timeStr || "").slice(0, 5);
   }
 
-  // Naive elapsed time between the two wall-clock values as entered - not
-  // timezone-aware (that would need resolving each airport code to an IANA
-  // zone, which needs a real airport database this app doesn't have), so
-  // it's exactly right for a same-timezone hop and only off by the zone
-  // difference for a long-haul one.
-  function flightDurationLabel(flight) {
-    if (!flight.departure_date || !flight.departure_time || !flight.arrival_date || !flight.arrival_time) return "";
-    const dep = new Date(`${flight.departure_date}T${flight.departure_time}`);
-    const arr = new Date(`${flight.arrival_date}T${flight.arrival_time}`);
-    const minutes = Math.round((arr - dep) / 60000);
-    if (!Number.isFinite(minutes) || minutes <= 0) return "";
-    const h = Math.floor(minutes / 60);
-    const m = minutes % 60;
-    return `${h}h${m ? ` ${m}m` : ""}`;
-  }
-
   function flightRowHtml(flight) {
     const headline = [flight.airline, flight.flight_number].filter(Boolean).join(" ") || "Flight";
     const route = `${escapeHtml(flight.departure_airport || "?")} ${formatFlightTime(flight.departure_time)} → ${escapeHtml(flight.arrival_airport || "?")} ${formatFlightTime(flight.arrival_time)}`;
@@ -1220,8 +1234,7 @@
     const dateLabel = flight.arrival_date && flight.arrival_date !== flight.departure_date
       ? `${formatFlightDate(flight.departure_date)} – ${formatFlightDate(flight.arrival_date)}`
       : formatFlightDate(flight.departure_date);
-    const duration = flightDurationLabel(flight);
-    const meta = [dateLabel, duration].filter(Boolean).join(" · ");
+    const meta = dateLabel;
 
     return `
       <li class="plain-row flight-row" data-id="${flight.id}">
@@ -1298,21 +1311,40 @@
     };
   }
 
+  // A new outbound flight almost always departs on the first day of the
+  // trip - prefill that so the common case needs no date entry at all.
+  function defaultOutboundFields() {
+    const trip = currentTrip();
+    return {
+      airline: "", flight_number: "", departure_airport: "",
+      departure_date: trip?.start_date || "", departure_time: "",
+      arrival_airport: "", arrival_date: "", arrival_time: "", arrDateTouched: "",
+    };
+  }
+
   // A round trip's return leg is normally the same airline flying the same
   // route backwards, landing home on the last day of the trip - prefill
-  // that from the outbound draft (when there is one) and the trip's own
-  // dates, so toggling to Return during an add is usually just "fill in
-  // the flight number and times" rather than retyping everything.
+  // that from the outbound draft (when there is one), falling back to
+  // whatever outbound flight is already saved locally for this trip even
+  // if it hasn't finished syncing to the server yet, so toggling to Return
+  // during an add is usually just "fill in the flight number and times"
+  // rather than retyping everything. Only used to seed a brand new Return
+  // draft (callers only reach here when there's nothing there yet), so
+  // there's never anything to override.
   function defaultReturnFields() {
     const trip = currentTrip();
-    const ob = flightDrafts.outbound;
+    const savedOutbound = trip ? tripFlights(trip.id, "outbound") : [];
+    const ob = flightDrafts.outbound
+      || (savedOutbound.length ? flightToFields(savedOutbound[savedOutbound.length - 1]) : null);
+    const homeAirport = flightDrafts.outbound?.departure_airport
+      || savedOutbound[0]?.departure_airport || "";
     return {
       airline: ob?.airline || "",
       flight_number: "",
       departure_airport: normalizeAirportCode(ob?.arrival_airport || ""),
       departure_date: trip?.end_date || "",
       departure_time: "",
-      arrival_airport: normalizeAirportCode(ob?.departure_airport || ""),
+      arrival_airport: normalizeAirportCode(homeAirport),
       arrival_date: "",
       arrival_time: "",
       arrDateTouched: "",
@@ -1334,7 +1366,7 @@
     setFlightModalLeg(startLeg);
     if (flight) writeFlightFormFields(flightToFields(flight));
     else if (startLeg === "return") writeFlightFormFields(defaultReturnFields());
-    else writeFlightFormFields(null);
+    else writeFlightFormFields(defaultOutboundFields());
     el.flightDeleteBtn.hidden = !flight;
     openModal(el.flightModal);
     el.flightAirlineInput.focus();
@@ -1435,6 +1467,96 @@
     const id = editingFlightId;
     closeModal(el.flightModal);
     await softDeleteFlight(id);
+  }
+
+  // ---------------------------------------------------------------------
+  // Trip summary — a plain-text readout of flights, accommodation and
+  // dates, meant to be copied into a message rather than read on screen.
+  // ---------------------------------------------------------------------
+
+  function formatSummaryDate(dateStr) {
+    if (!dateStr) return "";
+    return new Date(`${dateStr}T00:00:00`).toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  }
+
+  function airportTimeBit(code, time) {
+    return [code || "?", formatFlightTime(time)].filter(Boolean).join(" ");
+  }
+
+  function flightSummaryLines(label, flight) {
+    const airlineBit = [flight.airline, flight.flight_number].filter(Boolean).join(" ");
+    const route = `${airportTimeBit(flight.departure_airport, flight.departure_time)} -> ${airportTimeBit(flight.arrival_airport, flight.arrival_time)}`;
+    const arrivesNextDay = flight.arrival_date && flight.arrival_date !== flight.departure_date
+      ? ` (arrives ${formatSummaryDate(flight.arrival_date)})` : "";
+    return [
+      `${label}${airlineBit ? ": " + airlineBit : ""}`,
+      `  ${route}, ${formatSummaryDate(flight.departure_date)}${arrivesNextDay}`,
+    ];
+  }
+
+  // Groups consecutive days sharing the same accommodation text into a
+  // single date-range line instead of repeating it for every day of a stay.
+  function accommodationSummaryLines(trip) {
+    const dates = tripDateList(trip);
+    const lines = [];
+    let rangeStart = null, rangeVal = null, prevDate = null;
+    const flush = (endDate) => {
+      if (rangeVal == null) return;
+      const label = rangeStart === endDate ? formatSummaryDate(rangeStart) : `${formatSummaryDate(rangeStart)} - ${formatSummaryDate(endDate)}`;
+      lines.push(`${label}: ${rangeVal}`);
+    };
+    for (const d of dates) {
+      const row = dayRowFor(trip.id, d);
+      const val = row?.accommodation?.trim() || null;
+      if (val !== rangeVal) {
+        flush(prevDate);
+        rangeStart = d;
+        rangeVal = val;
+      }
+      prevDate = d;
+    }
+    flush(prevDate);
+    return lines;
+  }
+
+  function buildTripSummaryText(trip) {
+    const title = trip.name ? (trip.destination ? `${trip.name}, ${trip.destination}` : trip.name) : "Trip";
+    const lines = [`Trip to ${title}`];
+    if (trip.start_date && trip.end_date) {
+      lines.push(`${formatSummaryDate(trip.start_date)} to ${formatSummaryDate(trip.end_date)}`);
+    }
+
+    const outbound = tripFlights(trip.id, "outbound");
+    const returning = tripFlights(trip.id, "return");
+    if (outbound.length || returning.length) {
+      lines.push("", "FLIGHTS");
+      for (const f of outbound) lines.push(...flightSummaryLines("Outbound", f));
+      for (const f of returning) lines.push(...flightSummaryLines("Return", f));
+    }
+
+    const accomLines = accommodationSummaryLines(trip);
+    if (accomLines.length) {
+      lines.push("", "ACCOMMODATION", ...accomLines);
+    }
+
+    return lines.join("\n");
+  }
+
+  function openTripSummaryModal() {
+    const trip = currentTrip();
+    if (!trip) return;
+    el.tripSummaryText.value = buildTripSummaryText(trip);
+    openModal(el.tripSummaryModal);
+  }
+
+  async function copyTripSummary() {
+    el.tripSummaryText.select();
+    try {
+      await navigator.clipboard.writeText(el.tripSummaryText.value);
+      showToast("Summary copied");
+    } catch {
+      showToast("Select and copy the text below");
+    }
   }
 
   function renderItinerary() {

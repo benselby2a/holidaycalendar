@@ -609,6 +609,13 @@ html.pack-screen-active body { overflow: hidden; height: 100%; }
 
 /* ------------------------------------------------------------ flights card */
 .pack-screen .flights-card { display: grid; gap: 14px; }
+.pack-screen .flights-card-return { margin-top: 12px; }
+.pack-screen .trip-summary-btn { margin-left: auto; min-height: 34px; padding: 6px 10px; font-size: 0.8rem; }
+.pack-screen .trip-summary-textarea {
+  width: 100%; box-sizing: border-box; resize: vertical; font-family: inherit; font-size: 0.85rem;
+  line-height: 1.5; padding: 10px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface-raised); color: var(--text);
+}
 .pack-screen .flights-leg .section-head { padding: 0 0 4px; }
 .pack-screen .add-flight-btn {
   min-height: 34px;
