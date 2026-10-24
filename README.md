@@ -8,8 +8,9 @@ A lightweight holiday planning web app with:
 
 ## 1) Create Supabase tables
 
-In Supabase SQL Editor, run the SQL in:
-- `supabase.sql`
+In Supabase SQL Editor, run, in order:
+1. `supabase/migrate_to_cnkznpkvwoqxaiywwmhr.sql` - creates the `holidaycalendar` schema and its tables.
+2. Every file under `supabase/migrations/`, oldest first - schema changes and RLS fixes applied since.
 
 Each trip also has its own packing/itinerary screen (`pack.js`/`pack.css`,
 opened from a trip's "PlanIt" link). It reads/writes a separate
@@ -37,6 +38,9 @@ The values are stored in your browser local storage and used by the app to read/
 
 ## Notes
 
-- Current RLS policies in `supabase.sql` allow all users with the anon key to read/write.
-- For private/shared household use this is usually OK, but for stronger security add auth and user-specific policies.
+- RLS policies on the `holidaycalendar` and `packing_list` schemas are
+  scoped `to authenticated` - the published anon key alone cannot read or
+  write any table. Any signed-in Supabase user can still read/write all of
+  it, since there's no further per-user scoping - fine for a trusted
+  household, but keep public sign-up disabled on the Supabase project.
 - `data/world-50m.json` is Natural Earth country boundary data (via the `world-atlas` npm package, ISC-licensed) used to draw the Countries Visited map. It's bundled locally so the map works without any external CDN calls.
