@@ -342,12 +342,19 @@ function populateCountrySelect(selectEl, selected = "United Kingdom") {
     .join("");
 }
 
+// Only matches when the full country name appears as whole words in the
+// location text (e.g. "Paris, France" matches France) - a plain substring
+// check would also fire mid-word or on a half-typed name (e.g. "China"
+// matching "Indianapolis" or matching while the user is still typing "Chin").
 function inferCountryFromLocation(locationText) {
   const text = String(locationText || "").trim().toLowerCase();
   if (!text) return null;
+  const words = text.split(/[^a-z]+/).filter(Boolean);
   for (const country of RECOGNIZED_COUNTRIES) {
-    const countryLc = country.toLowerCase();
-    if (text.includes(countryLc) || countryLc.includes(text)) return country;
+    const countryWords = country.toLowerCase().split(/[^a-z]+/).filter(Boolean);
+    for (let i = 0; i <= words.length - countryWords.length; i += 1) {
+      if (countryWords.every((word, j) => words[i + j] === word)) return country;
+    }
   }
   return null;
 }
@@ -2835,8 +2842,8 @@ if (el.holidayForm) {
       const countryManual = el.holidayForm.dataset.countryManual === "true";
       if (countryManual) return;
       const inferred = inferCountryFromLocation(el.holidayForm.elements.location.value);
-      if (inferred && el.holidayForm.elements.country) {
-        el.holidayForm.elements.country.value = inferred;
+      if (el.holidayForm.elements.country) {
+        el.holidayForm.elements.country.value = inferred || "United Kingdom";
       }
     });
   }
