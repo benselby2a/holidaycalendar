@@ -1446,6 +1446,23 @@ tr:hover { background: var(--table-hover); }
   min-width: 110px;
 }
 
+.year-nav-btn {
+  min-height: 34px;
+  min-width: 34px;
+  padding: 0;
+  font-size: 1.1rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.year-nav-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
 #open-add-holiday {
   background: var(--accent);
   border-color: var(--accent);

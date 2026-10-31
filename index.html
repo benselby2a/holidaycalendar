@@ -7,7 +7,7 @@
 <link rel="manifest" href="./manifest.webmanifest" />
 <link rel="icon" href="./icons/icon.svg" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="./icons/icon.svg" />
-    <link rel="stylesheet" href="styles.css?v=20260905-2" />
+    <link rel="stylesheet" href="styles.css?v=20261031-1" />
     <link rel="stylesheet" href="pack.css?v=20260905-3" />
     <script>
       if (window !== window.parent) {
@@ -56,7 +56,9 @@
         <div class="calendar-controls top-year-controls">
           <div class="year-nav">
             <label for="year-select" class="year-select-label">Year</label>
+            <button id="year-prev" type="button" class="year-nav-btn" aria-label="Previous year">&lsaquo;</button>
             <select id="year-select" aria-label="Select year"></select>
+            <button id="year-next" type="button" class="year-nav-btn" aria-label="Next year">&rsaquo;</button>
           </div>
           <h3 id="planner-year"></h3>
           <div>
@@ -358,7 +360,7 @@
     </template>
 
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2" crossorigin="anonymous"></script>
-    <script src="main.js?v=20260905-2"></script>
+    <script src="main.js?v=20261031-1"></script>
     <script src="pack.js?v=20260905-4"></script>
   </body>
 </html>

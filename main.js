@@ -288,6 +288,8 @@ const el = {
   calendarView: document.getElementById("calendar-view"),
   hideCompleted: document.getElementById("hide-completed"),
   yearSelect: document.getElementById("year-select"),
+  yearPrev: document.getElementById("year-prev"),
+  yearNext: document.getElementById("year-next"),
   openBankHolidays: document.getElementById("open-bank-holidays"),
   bankHolidaysModal: document.getElementById("bank-holidays-modal"),
   bankHolidaysCancel: document.getElementById("bank-holidays-cancel"),
@@ -2282,6 +2284,8 @@ function renderYearSelect() {
     .map((year) => `<option value="${year}" ${year === state.year ? "selected" : ""}>${year}</option>`)
     .join("");
   el.yearSelect.value = String(state.year);
+  if (el.yearPrev) el.yearPrev.disabled = state.year <= YEAR_MIN;
+  if (el.yearNext) el.yearNext.disabled = state.year >= YEAR_MAX;
 }
 
 function toggleView(view) {
@@ -2968,6 +2972,14 @@ if (el.hideCompleted) el.hideCompleted.addEventListener("change", (e) => {
 });
 if (el.yearSelect) el.yearSelect.addEventListener("change", async (e) => {
   await setYear(e.target.value);
+  renderBankHolidayList();
+});
+if (el.yearPrev) el.yearPrev.addEventListener("click", async () => {
+  await setYear(state.year - 1);
+  renderBankHolidayList();
+});
+if (el.yearNext) el.yearNext.addEventListener("click", async () => {
+  await setYear(state.year + 1);
   renderBankHolidayList();
 });
 function setAuthedUI(authed) {
